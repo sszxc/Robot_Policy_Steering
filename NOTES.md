@@ -27,7 +27,7 @@ Headless rendering needs `MUJOCO_GL=egl`.
 | 3 | Hammer a nail | script, arm+hand | done: 2.2 cm in 8 strikes, 230 g hammer |
 | 4 | Scissors open/close | script, hand-only | done: 5 cycles, 75–85% of range; paper cut faked by weld release |
 | 5 | In-hand position alignment (slide/pivot a rod to a target) | script first, RL later | partial: slide −20 mm ±0.4, pivot +16° ±0.2, translate ±6 mm ±1 mm; one direction only, RL needed for general |
-| 6 | Cube arbitrary reorientation | RL (hand-only, palm up) | todo |
+| 6 | Cube arbitrary reorientation | RL (hand-only, palm up) | done: MJX+PPO 150M steps (~2.5 h); eval 4.8 consecutive successes (0.4 rad tol) per 30 s, 0 drops |
 | 7 | Screwdriver twirl with fingers only | RL (try scripted gait) | todo |
 | 8 | Pen spinning | RL | todo |
 | 9 | Baoding balls | RL | todo |
@@ -50,3 +50,4 @@ Headless rendering needs `MUJOCO_GL=egl`.
 - Adjacent straight fingers touch after ~0.05 rad inward MCP roll (index→middle); flexed 1.6 rad, ~0.15 rad.
   The vendored mesh model gives the same onsets within ~0.02 rad, so roll is mainly for spreading outward.
 - Straight-thumb CMC barely moves the tip sideways; grip hold/slip threshold is ~0.01 rad of extra squeeze.
+- RL cube: train `python -m rl.train_cube` (params → out/rl/cube/), eval `MUJOCO_GL=egl python -m rl.eval_cube` (videos out/rl/cube_*.mp4). Checkpoints are not in git.
