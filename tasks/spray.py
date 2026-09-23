@@ -16,8 +16,7 @@ HAND_R = np.column_stack([(1, 0, 0), (0, 0, 1), (0, -1, 0)]).astype(float)  # pa
 
 PRESHAPE = H.pose(thumb=(0.75, -1.5, 0.3, 0.2), index=(0, 0.4, 0.2, 0.5), middle=(0, 0.3, 0.3, 0.3),
                   ring=(0, 0.3, 0.3, 0.3), pinky=(0, 0.3, 0.3, 0.3))
-WRAP = (0, 1.6, 1.5, 1.5)  # overshoot targets: fingers stop on the grip and squeeze
-GRASP = H.pose(thumb=(0.75, -1.5, 1.1, 1.0), index=(0, 0.7, 0.29, 1.03), middle=WRAP, ring=WRAP, pinky=WRAP)
+GRASP = H.pose(thumb=(0.75, -1.5, 1.1, 1.0), index=(0, 0.7, 0.29, 1.03), middle=H.CURL, ring=H.CURL, pinky=H.CURL)
 SQUEEZE = GRASP.copy()
 SQUEEZE[H.IDX["index"]] = (0, 0.8, 1.0, 1.35)
 
@@ -32,42 +31,6 @@ def palm_target(neck, R):
     q = np.zeros(4)
     mujoco.mju_mat2Quat(q, R.ravel())
     return neck - R @ (GRIP_H - PALM_H), q
-
-
-def slerp(q0, q1, t):
-    neg, dq, v, e, out = np.zeros(4), np.zeros(4), np.zeros(3), np.zeros(4), np.zeros(4)
-    mujoco.mju_negQuat(neg, q0)
-    mujoco.mju_mulQuat(dq, np.asarray(q1, float), neg)
-    mujoco.mju_quat2Vel(v, dq, 1.0)
-    angle = np.linalg.norm(v)
-    if angle < 1e-9:
-        return np.asarray(q1, float)
-    mujoco.mju_axisAngle2Quat(e, v / angle, t * angle)
-    mujoco.mju_mulQuat(out, e, q0)
-    return out
-
-
-def cart_move(s, pos, quat, duration, hand_q=None, n=20, callback=None):
-    """Straight-line palm motion: IK on n waypoints, then one smooth pass through them."""
-    p0 = s.site_pos("palm")
-    q0 = np.zeros(4)
-    mujoco.mju_mat2Quat(q0, s.d.site("palm").xmat)
-    qs, q = [s.d.ctrl[:6].copy()], s.d.ctrl[:6].copy()
-    for k in range(1, n + 1):
-        q = s.ik("palm", p0 + (np.asarray(pos) - p0) * k / n, slerp(q0, quat, k / n), q0=q)
-        qs.append(q)
-    qs = np.array(qs)
-    h0 = s.d.ctrl[s.hand_ctrl].copy()
-    steps = max(1, int(duration / s.m.opt.timestep))
-    for i in range(1, steps + 1):
-        u = (0.5 - 0.5 * np.cos(np.pi * i / steps)) * n
-        k = min(int(u), n - 1)
-        s.d.ctrl[:6] = qs[k] + (u - k) * (qs[k + 1] - qs[k])
-        if hand_q is not None:
-            s.d.ctrl[s.hand_ctrl] = h0 + (u / n) * (np.asarray(hand_q) - h0)
-        if callback:
-            callback(s, u / n)
-        s.step()
 
 
 def in_palm(s):
@@ -90,7 +53,7 @@ def main():
     trig_max = m.jnt_range[trig.id][1]
     mist = m.geom("spray_mist").id
     s.reset(arm_q=scene.ARM_HOME, hand_q=H.OPEN)
-    start = s.ik("palm", (0.3, 0.1, 0.8), scene.hand_quat((0, 0, -1), (1, 0, 0)), q0=scene.ARM_HOME)
+    start = s.ik_high((0.3, 0.1, 0.8), scene.hand_quat((0, 0, -1), (1, 0, 0)))
     s.reset(arm_q=start, hand_q=H.OPEN)  # raised start: ARM_HOME would put the hand inside the bottle
     s.hold(0.3)
 
@@ -103,19 +66,19 @@ def main():
 
     # Approach from behind the grip, then close.
     pos, quat = palm_target(NECK, HAND_R)
-    s.move_site("palm", pos + [-0.15, 0, 0.15], quat, duration=1.5, hand_q=PRESHAPE)
-    cart_move(s, pos + [-0.12, 0, 0], quat, 0.8)
-    cart_move(s, pos, quat, 1.0)
+    s.move(arm_q=s.ik_high(pos + [-0.15, 0, 0.15], quat), hand_q=PRESHAPE, duration=1.5)
+    s.cart_move(pos + [-0.12, 0, 0], quat, 0.8)
+    s.cart_move(pos, quat, 1.0)
     s.move_hand(GRASP, 0.8)
     s.hold(0.3)
     grasp_contacts = sorted(s.hand_contacts("spray"))
 
     # Lift, then turn to aim the nozzle to the side.
     rel0 = in_palm(s)
-    cart_move(s, pos + [0, 0, 0.12], quat, 1.2)
+    s.cart_move(pos + [0, 0, 0.12], quat, 1.2)
     R_aim = rot_z(0.6) @ HAND_R
     pos_aim, quat_aim = palm_target(NECK + [-0.05, 0.05, 0.12], R_aim)
-    cart_move(s, pos_aim, quat_aim, 1.2)
+    s.cart_move(pos_aim, quat_aim, 1.2)
     s.hold(0.3)
     lifted = s.body_pos("spray")[2] - BOTTLE[2]
 
@@ -130,14 +93,14 @@ def main():
     held = s.body_pos("spray")[2] - BOTTLE[2]
 
     # Put it back, open fingers before the thumb (it sits in front of the neck), back straight out.
-    cart_move(s, pos + [0, 0, 0.12], quat, 1.2)
-    cart_move(s, pos + [0, 0, 0.003], quat, 1.0)
+    s.cart_move(pos + [0, 0, 0.12], quat, 1.2)
+    s.cart_move(pos + [0, 0, 0.003], quat, 1.0)
     fingers_open = GRASP.copy()
     fingers_open[4:] = PRESHAPE[4:]
     s.move_hand(fingers_open, 0.5)
     s.move_hand(PRESHAPE, 0.5)
-    cart_move(s, pos + [-0.12, 0, 0], quat, 1.0)
-    cart_move(s, pos + [-0.15, 0, 0.15], quat, 0.8)
+    s.cart_move(pos + [-0.12, 0, 0], quat, 1.0)
+    s.cart_move(pos + [-0.15, 0, 0.15], quat, 0.8)
     s.hold(0.5)
     placed = s.d.body("spray").xmat[8]  # cos(tilt)
     s.close()

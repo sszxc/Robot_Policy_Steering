@@ -1,6 +1,9 @@
 <!-- Empty world: floor, lights, sky. Robots/objects are attached in sim/scene.py. -->
 <mujoco model="scene_base">
-  <option timestep="0.002" integrator="implicitfast" cone="elliptic" impratio="10" />
+  <compiler angle="radian" autolimits="true" />
+  <option timestep="0.002" integrator="implicitfast" cone="elliptic" impratio="10">
+    <flag multiccd="enable" />
+  </option>
   <visual>
     <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0 0 0" />
     <rgba haze="0.15 0.25 0.35 1" />

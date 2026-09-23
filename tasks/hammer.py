@@ -17,12 +17,9 @@ FINGER = (0, 1.6, 1.5, 1.2)
 GRASP = H.pose(thumb=(0.42, -1.35, 0.63, 1.26), index=FINGER, middle=FINGER, ring=FINGER, pinky=FINGER)
 FIST = GRASP.copy()
 FIST[H.IDX["thumb"]] = 0
-# IK seed with wrist_2 above the hand (scene.ARM_HOME's wrist hangs below the palm and hits the rack).
-WRIST_UP = np.array([2.4, -1.5, 1.5, 0.5, 1.2, -1.6])
 TARGET_DEPTH = 0.02
 WIND_UP, FOLLOW = 0.9, 0.5    # wrist_3 swing: lift angle and target past contact (rad)
 SWING_T = 0.7                 # downswing time (s); peak ~pi rad/s, the UR5e wrist speed limit
-WRIST_KV = 25                 # menagerie wrist servos (kv=100) are ~6x overdamped and lag badly on swings
 
 
 def build():
@@ -31,10 +28,7 @@ def build():
     scene.add_object(spec, "hammer_rack.xml", RACK)
     scene.add_object(spec, "hammer.xml", RACK + [0, 0, 0.085])
     scene.add_object(spec, "hammer_nail.xml", NAIL)
-    m = spec.compile()
-    for a in ("wrist_1", "wrist_2", "wrist_3"):
-        m.actuator(a).biasprm[2] = -WRIST_KV
-    return m
+    return spec.compile()
 
 
 def in_hand_rot(s):
@@ -68,8 +62,7 @@ def strike(s, q):
 def main():
     m = build()
     s = cli_sim(m, "hammer", cam=dict(lookat=np.array([0.47, 0.05, 0.57]), distance=0.95, azimuth=165, elevation=-15))
-    s.reset(arm_q=WRIST_UP, hand_q=H.OPEN)
-    s.reset(arm_q=s.ik("palm", (0.5, 0, 0.6), PALM_DOWN), hand_q=H.OPEN)
+    s.reset(arm_q=scene.ARM_HOME, hand_q=H.OPEN)  # palm down at (0.5, 0, 0.6), wrist above the hand
     s.hold(0.3)
     nail_q = m.joint("nail").qposadr[0]
 

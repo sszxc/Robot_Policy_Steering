@@ -29,7 +29,6 @@ def gripped(q, thumb=0.15, index=0.15, middle=0.15):
 class Align:
     def __init__(self, s):
         self.s, self.m, self.d = s, s.m, s.d
-        self.hand_dofs = self.m.jnt_dofadr[self.m.actuator_trnid[s.hand_ctrl, 0]]
         self.q = GRIP.copy()  # hand pose without squeeze
 
     # ---- measurements (world frame) ----
@@ -74,33 +73,10 @@ class Align:
         self.set_grip()
         self.s.hold(0.3)
 
-    def tip_ik(self, delta, iters=100):
-        """Hand pose moving the thumb/index/middle tips by `delta` (world vector, or dict per finger)
-        from their spots at self.q; arm fixed."""
+    def tip_ik(self, delta):
+        """Hand pose moving the thumb/index/middle tips by `delta` (world vector, or dict per finger) from self.q."""
         delta = delta if isinstance(delta, dict) else {f: delta for f in TIPS}
-        m, d = self.m, mujoco.MjData(self.m)
-        jnt = m.actuator_trnid[self.s.hand_ctrl, 0]
-        adr = m.jnt_qposadr[jnt]
-        d.qpos[:] = self.d.qpos
-        d.qpos[adr] = self.q
-        mujoco.mj_kinematics(m, d)
-        targets = {f: d.site(f + "_tip").xpos + delta[f] for f in TIPS}
-        jp = np.zeros((3, m.nv))
-        for f, tgt in targets.items():
-            sl, sid = H.IDX[f], m.site(f + "_tip").id
-            sl = sl if f == "thumb" else slice(sl.start + 1, sl.stop)  # finger roll locked (knuckles collide)
-            for _ in range(iters):
-                mujoco.mj_kinematics(m, d)
-                mujoco.mj_comPos(m, d)
-                e = tgt - d.site_xpos[sid]
-                if np.linalg.norm(e) < 1e-4:
-                    break
-                mujoco.mj_jacSite(m, d, jp, None, sid)
-                J = jp[:, self.hand_dofs[sl]]
-                dq = J.T @ np.linalg.solve(J @ J.T + 1e-5 * np.eye(3), e)
-                d.qpos[adr[sl]] = np.clip(d.qpos[adr[sl]] + np.clip(dq, -0.05, 0.05), *m.jnt_range[jnt[sl]].T)
-        return d.qpos[adr].copy()
-
+        return self.s.tip_ik(self.q, delta)
 
 def setup(s):
     """Arm in handshake pose (palm +y, fingers +x, thumb up), rod placed in the pinch, grip closed."""

@@ -85,8 +85,7 @@ def build():
     body_a = spec.worldbody.add_body(name="scissors", pos=P)
     body_a.add_freejoint(name="scissors")
     body_b = body_a.add_body(name="scissors_b")
-    # scene_base.xml has no compiler angle="radian", so spec-added joint ranges are in degrees
-    body_b.add_joint(name="scissors_hinge", axis=s, range=[0, np.degrees(OPEN_RANGE)], damping=0.002)
+    body_b.add_joint(name="scissors_hinge", axis=s, range=[0, OPEN_RANGE], damping=0.002)
     for body, center, axis, side, rgba in ((body_a, T, ta, 1, [0.9, 0.2, 0.2, 1]), (body_b, F, fa, -1, [0.2, 0.4, 0.9, 1])):
         pts = np.array(_ring(body, center - P, axis, rgba))
         edge = pts[np.argmin(np.linalg.norm(pts, axis=1))]  # ring point nearest the pivot

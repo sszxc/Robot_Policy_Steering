@@ -6,8 +6,9 @@ import numpy as np
 
 MJ = Path(__file__).resolve().parents[1] / "mujoco"
 
-# UR5e joints: palm site at (0.5, 0, 0.6), palm facing down, fingers along +x (table in front at x>0).
-ARM_HOME = np.array([2.723, -1.776, 1.917, -3.283, -1.153, 1.571])
+# UR5e joints (base on the floor): palm site at (0.5, 0, 0.6), palm down, fingers +x, wrist links above the hand.
+ARM_HOME = np.array([2.723, -1.723, 1.355, 0.368, 1.153, -1.571])
+WRIST_KV = 25  # menagerie wrist servos use kv=100, ~6x overdamped; they lag far behind fast targets
 
 
 def hand_quat(palm_dir, finger_dir):
@@ -36,14 +37,19 @@ def hand_only(pos=(0, 0, 0.3), quat=None):
     return spec
 
 
-def arm_hand():
-    """UR5e at the world origin with the hand bolted to its flange (no adapter yet)."""
+def arm_hand(base_height=0.0):
+    """UR5e (optionally on a cylindrical pedestal) with the hand bolted to its flange (no adapter yet)."""
     spec = _base()
     arm = mujoco.MjSpec.from_file(str(MJ / "universal_robots_ur5e" / "ur5e.xml"))
     for k in list(arm.keys):
         arm.delete(k)
+    for a in ("wrist_1", "wrist_2", "wrist_3"):
+        arm.actuator(a).biasprm[2] = -WRIST_KV
     arm.site("attachment_site").attach_body(_hand().body("hand_base"), "", "")
-    spec.worldbody.add_frame().attach_body(arm.body("base"), "", "")
+    spec.worldbody.add_frame(pos=[0, 0, base_height]).attach_body(arm.body("base"), "", "")
+    if base_height > 0:
+        spec.worldbody.add_geom(name="pedestal", type=mujoco.mjtGeom.mjGEOM_CYLINDER, size=[0.08, base_height / 2],
+                                pos=[0, 0, base_height / 2], rgba=[0.3, 0.3, 0.32, 1])
     return spec
 
 

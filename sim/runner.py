@@ -5,6 +5,21 @@ import subprocess
 import mujoco
 import numpy as np
 
+from sim import hand as H
+
+
+def slerp(q0, q1, t):
+    """Quaternion interpolation from q0 (t=0) to q1 (t=1)."""
+    neg, dq, v, e, out = np.zeros(4), np.zeros(4), np.zeros(3), np.zeros(4), np.zeros(4)
+    mujoco.mju_negQuat(neg, q0)
+    mujoco.mju_mulQuat(dq, np.asarray(q1, float), neg)
+    mujoco.mju_quat2Vel(v, dq, 1.0)
+    angle = np.linalg.norm(v)
+    if angle < 1e-9:
+        return np.asarray(q1, float)
+    mujoco.mju_axisAngle2Quat(e, v / angle, t * angle)
+    mujoco.mju_mulQuat(out, e, q0)
+    return out
 
 
 class Sim:
@@ -132,6 +147,75 @@ class Sim:
         q = self.ik(site, pos, quat, q0=self.d.ctrl[:6])
         self.move(arm_q=q, hand_q=hand_q, duration=duration)
         return q
+
+    def ik_high(self, pos, quat, site="palm", seeds=(), n_random=20):
+        """Multi-seed IK (current ctrl, `seeds`, random around the first seed). Among converged solutions with
+        all wrist links above the site (clear of tables), returns the one closest to the current arm ctrl."""
+        d = mujoco.MjData(self.m)
+        d.qpos[:] = self.d.qpos
+        rng = np.random.default_rng(0)
+        base = [self.d.ctrl[:6].copy(), *seeds]
+        seeds = base + [base[min(1, len(base) - 1)] + rng.uniform(-1.5, 1.5, 6) for _ in range(n_random)]
+        best, best_dist = None, np.inf
+        for q0 in seeds:
+            q = self.ik(site, pos, quat, q0=q0)
+            if self.ik_err > 1e-3:
+                continue
+            d.qpos[:6] = q
+            mujoco.mj_kinematics(self.m, d)
+            z = min(d.body(b).xpos[2] for b in ("wrist_1_link", "wrist_2_link", "wrist_3_link"))
+            dist = np.linalg.norm(q - self.d.ctrl[:6])
+            if z > pos[2] and dist < best_dist:
+                best, best_dist = q, dist
+        return best
+
+    def cart_move(self, pos, quat, duration, hand_q=None, site="palm", n=20, callback=None):
+        """Straight-line site motion (position lerp + quat slerp): IK on n waypoints, one smooth pass through them."""
+        p0, q0 = self.site_pos(site), np.zeros(4)
+        mujoco.mju_mat2Quat(q0, self.d.site(site).xmat)
+        path, q = [self.d.ctrl[:6].copy()], self.d.ctrl[:6].copy()
+        for k in range(1, n + 1):
+            q = self.ik(site, p0 + (np.asarray(pos) - p0) * k / n, slerp(q0, quat, k / n), q0=q)
+            path.append(q)
+        path = np.array(path)
+        h0 = self.d.ctrl[self.hand_ctrl].copy()
+        steps = max(1, int(duration / self.m.opt.timestep))
+        for i in range(1, steps + 1):
+            u = (0.5 - 0.5 * np.cos(np.pi * i / steps)) * n
+            k = min(int(u), n - 1)
+            self.d.ctrl[:6] = path[k] + (u - k) * (path[k + 1] - path[k])
+            if hand_q is not None:
+                self.d.ctrl[self.hand_ctrl] = h0 + (u / n) * (np.asarray(hand_q) - h0)
+            if callback:
+                callback(self, u / n)
+            self.step()
+
+    def tip_ik(self, q0, deltas, iters=100, lock_roll=True):
+        """Hand pose moving fingertip sites by world-frame `deltas` ({finger: vec}) from where they are at hand
+        pose q0 (arm fixed). Other fingers keep q0; finger MCP roll locked by default."""
+        m, d = self.m, mujoco.MjData(self.m)
+        jnt = m.actuator_trnid[self.hand_ctrl, 0]
+        adr, dof = m.jnt_qposadr[jnt], m.jnt_dofadr[jnt]
+        d.qpos[:] = self.d.qpos
+        d.qpos[adr] = q0
+        mujoco.mj_kinematics(m, d)
+        jp = np.zeros((3, m.nv))
+        for f, delta in deltas.items():
+            sid = m.site(f + "_tip").id
+            tgt = d.site_xpos[sid] + delta
+            sl = H.IDX[f]
+            sl = slice(sl.start + 1, sl.stop) if lock_roll and f != "thumb" else sl
+            for _ in range(iters):
+                mujoco.mj_kinematics(m, d)
+                mujoco.mj_comPos(m, d)
+                e = tgt - d.site_xpos[sid]
+                if np.linalg.norm(e) < 1e-4:
+                    break
+                mujoco.mj_jacSite(m, d, jp, None, sid)
+                J = jp[:, dof[sl]]
+                dq = J.T @ np.linalg.solve(J @ J.T + 1e-5 * np.eye(3), e)
+                d.qpos[adr[sl]] = np.clip(d.qpos[adr[sl]] + np.clip(dq, -0.05, 0.05), *m.jnt_range[jnt[sl]].T)
+        return d.qpos[adr].copy()
 
     # ---- queries ----
     def body_pos(self, name):
