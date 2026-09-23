@@ -1,0 +1,8 @@
+<mujoco model="grasp_bottle">
+  <worldbody>
+    <body name="bottle">
+      <freejoint name="bottle" />
+      <geom name="bottle" type="cylinder" size="0.035 0.09" mass="0.2" condim="4" friction="1 0.01 0.001" rgba="0.2 0.6 0.3 1" />
+    </body>
+  </worldbody>
+</mujoco>

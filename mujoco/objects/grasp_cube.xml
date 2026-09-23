@@ -1,0 +1,8 @@
+<mujoco model="grasp_cube">
+  <worldbody>
+    <body name="small_cube">
+      <freejoint name="small_cube" />
+      <geom name="small_cube" type="box" size="0.0175 0.0175 0.0175" mass="0.05" condim="4" friction="1 0.01 0.001" rgba="0.9 0.3 0.2 1" />
+    </body>
+  </worldbody>
+</mujoco>
