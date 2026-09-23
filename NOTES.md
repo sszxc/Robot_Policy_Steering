@@ -28,7 +28,7 @@ Headless rendering needs `MUJOCO_GL=egl`.
 | 4 | Scissors open/close | script, hand-only | done: 5 cycles, 75–85% of range; paper cut faked by weld release |
 | 5 | In-hand position alignment (slide/pivot a rod to a target) | script first, RL later | partial: slide −20 mm ±0.4, pivot +16° ±0.2, translate ±6 mm ±1 mm; one direction only, RL needed for general |
 | 6 | Cube arbitrary reorientation | RL (hand-only, palm up) | done: MJX+PPO 150M steps (~2.5 h); eval 4.8 consecutive successes (0.4 rad tol) per 30 s, 0 drops |
-| 7 | Screwdriver twirl with fingers only | scripted partial; RL next | partial: fixed-axis handle, index-only sweep gait, 467° in 12 cycles, one direction; thumb+index twirl failed (thumb CMC torque-limited) |
+| 7 | Screwdriver twirl with fingers only | scripted + RL | RL done: 228–268 deg/s CPU (251–280 MJX), both directions, thumb/index/middle gaiting; scripted: index-only 32 deg/s one direction |
 | 8 | Pen spinning | RL | todo |
 | 9 | Baoding balls | RL | todo |
 | 10 | Rubik's cube one-face turn | scripted (fixture) done; in-hand RL not solved | done (fixture): 4 consecutive quarter turns, 1 thumb stroke each; in-hand RL 0.25 turns/ep, see report |
@@ -73,3 +73,4 @@ sweeps the top layer (CMC −1.4 → 1.0, retract outside), closed-loop on the h
   index/thumb push the top is at the edge of this hand's workspace); results are high-variance and the MJX→CPU gap is large
   for this contact-rich task. Next: fixture-based RL first (lower layers fixed), then a curriculum loosening the fixture;
   longer training; check MJX vs CPU contact settings (solver iterations, condim) before trusting CPU evals.
+- RL screwdriver: `python -m rl.train_screwdriver` (152M steps, 3.3 h), eval `python -m rl.eval_screwdriver` → out/rl/screwdriver.mp4. RL model uses a capsule handle (MJX lacks cylinder–box). Caveats: fingertips penetrate up to 4.8 mm (soft contact, 5 solver iters); thumb/index/middle run at the 0.387 Nm limit.
