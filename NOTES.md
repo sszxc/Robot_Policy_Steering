@@ -31,7 +31,7 @@ Headless rendering needs `MUJOCO_GL=egl`.
 | 7 | Screwdriver twirl with fingers only | scripted partial; RL next | partial: fixed-axis handle, index-only sweep gait, 467° in 12 cycles, one direction; thumb+index twirl failed (thumb CMC torque-limited) |
 | 8 | Pen spinning | RL | todo |
 | 9 | Baoding balls | RL | todo |
-| 10 | Rubik's cube one-face turn | RL | todo |
+| 10 | Rubik's cube one-face turn | scripted (fixture) done; in-hand RL not solved | done (fixture): 4 consecutive quarter turns, 1 thumb stroke each; in-hand RL 0.25 turns/ep, see report |
 
 ## Decisions log
 - 2026-09-23: replaced the mesh-collision combined model (`ur5e_hand.xml`) with MjSpec composition in `sim/scene.py`.
@@ -51,3 +51,25 @@ Headless rendering needs `MUJOCO_GL=egl`.
   The vendored mesh model gives the same onsets within ~0.02 rad, so roll is mainly for spreading outward.
 - Straight-thumb CMC barely moves the tip sideways; grip hold/slip threshold is ~0.01 rad of extra squeeze.
 - RL cube: train `python -m rl.train_cube` (params → out/rl/cube/), eval `MUJOCO_GL=egl python -m rl.eval_cube` (videos out/rl/cube_*.mp4). Checkpoints are not in git.
+
+## Task #10 report — Rubik's cube one-face turn (2026-09-23)
+**Scripted, cube in a table fixture (`tasks/rubik.py`): works.** Arm brings the palm down over a fixed cube; only the thumb
+sweeps the top layer (CMC −1.4 → 1.0, retract outside), closed-loop on the hinge angle, plus a 4-fold detent (0.01 Nm peak).
+4 consecutive quarter turns, one stroke each: −89.4 / −178.4 / −267.3 / −357.0°. Robustness: 24/27 cube offsets within ±6 mm pass
+(6/27 without the detent, so the snap-to-quarter behaviour matters). Scripted in-hand (palm up) failed: one turn at most, very sensitive.
+
+**RL, cube free in the palm-up hand (`rl/rubik_env.py`, `rubik_train.py`, `rubik_eval.py`): not solved.**
+- Obs 76 (hand qpos/qvel/ctrl, cube pose/vel, top-layer error sin/cos, hinge vel). Reward: 20·progress + 0.5/(err+0.1)
+  − 10·cube displacement − 0.5·cube rotation + 100·success − 100·drop. Success: err < 10° and hinge vel < 1 rad/s, then target += 90°.
+- PPO 39M steps (9000 s timeout of a 50M run). Training-eval peak 1.18 quarter turns/ep at 25M, drop ≈ 0.55 throughout.
+- Re-evaluated (64 eps in MJX, 20 eps in CPU MuJoCo):
+
+| checkpoint | MJX turns / drop | CPU turns / drop |
+|---|---|---|
+| 25.2M (best in log) | 0.08 / 0.36 | 0.50 / 0.00 |
+| 39.0M (final) | 0.25 / 0.47 | 0.00 / 1.00 (flings cube in ~5 steps) |
+
+- Takeaways: the policy never learned a reliable regrasp gait (holding the lower layers with ring/pinky + palm while
+  index/thumb push the top is at the edge of this hand's workspace); results are high-variance and the MJX→CPU gap is large
+  for this contact-rich task. Next: fixture-based RL first (lower layers fixed), then a curriculum loosening the fixture;
+  longer training; check MJX vs CPU contact settings (solver iterations, condim) before trusting CPU evals.
