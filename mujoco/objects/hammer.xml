@@ -1,0 +1,13 @@
+<mujoco model="hammer">
+  <!-- Origin at the grip center; handle along +y, head at the +y end, striking face at head bottom (-z). -->
+  <worldbody>
+    <body name="hammer">
+      <freejoint name="hammer" />
+      <geom name="hammer_handle" type="capsule" fromto="0 -0.1 0 0 0.18 0" size="0.014" mass="0.08"
+        condim="4" friction="1.2 0.01 0.001" rgba="0.72 0.52 0.3 1" />
+      <geom name="hammer_head" type="box" pos="0 0.195 0" size="0.014 0.016 0.045" mass="0.15"
+        condim="4" friction="0.5 0.01 0.001" rgba="0.55 0.57 0.6 1" />
+      <site name="hammer_face" pos="0 0.195 -0.045" size="0.003" group="4" />
+    </body>
+  </worldbody>
+</mujoco>
