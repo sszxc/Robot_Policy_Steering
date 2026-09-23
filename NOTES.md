@@ -28,7 +28,7 @@ Headless rendering needs `MUJOCO_GL=egl`.
 | 4 | Scissors open/close | script, hand-only | done: 5 cycles, 75–85% of range; paper cut faked by weld release |
 | 5 | In-hand position alignment (slide/pivot a rod to a target) | script first, RL later | partial: slide −20 mm ±0.4, pivot +16° ±0.2, translate ±6 mm ±1 mm; one direction only, RL needed for general |
 | 6 | Cube arbitrary reorientation | RL (hand-only, palm up) | done: MJX+PPO 150M steps (~2.5 h); eval 4.8 consecutive successes (0.4 rad tol) per 30 s, 0 drops |
-| 7 | Screwdriver twirl with fingers only | RL (try scripted gait) | todo |
+| 7 | Screwdriver twirl with fingers only | scripted partial; RL next | partial: fixed-axis handle, index-only sweep gait, 467° in 12 cycles, one direction; thumb+index twirl failed (thumb CMC torque-limited) |
 | 8 | Pen spinning | RL | todo |
 | 9 | Baoding balls | RL | todo |
 | 10 | Rubik's cube one-face turn | RL | todo |
