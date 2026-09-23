@@ -7,7 +7,7 @@ no domain randomization. RL comes later, so collisions are primitives and hand-o
 - `mujoco/hx5_right.xml` — hand with primitive collisions (source of truth; vendored `robotis_hand/` untouched).
 - `mujoco/scene_base.xml`, `mujoco/objects/*.xml` — world and task objects.
 - `sim/scene.py` — `hand_only(pos, quat)`, `arm_hand()`, `add_table`, `add_object`, `hand_quat(palm_dir, finger_dir)`.
-- `sim/runner.py` — `Sim`: `reset`, `move(arm_q, hand_q, duration)`, `ik`/`move_site`, `hold`, video/viewer/log.
+- `sim/runner.py` — `Sim`: `reset`, `move(arm_q, hand_q, duration)`, `ik`/`ik_high`/`move_site`, `cart_move` (straight line), `tip_ik` (fingertips), `hold`, video/viewer/log.
 - `sim/hand.py` — 20-dim hand target layout and named postures.
 - `tasks/*.py` — one script per task; `python -m tasks.<name> [--viewer] [--video out/x.mp4]`.
 - `view.py` — interactive viewer for base scenes. Tests: `python -m pytest tests -q`.
@@ -37,10 +37,16 @@ Headless rendering needs `MUJOCO_GL=egl`.
 - 2026-09-23: replaced the mesh-collision combined model (`ur5e_hand.xml`) with MjSpec composition in `sim/scene.py`.
 - 2026-09-23: own DLS IK instead of adding `mink` (6-DoF arm, one site target is enough).
 - 2026-09-23: installed into base conda: pytest, mujoco-mjx 3.7.0, jax[cuda12] 0.11.2, brax 0.14.2 (RL uses MJX + brax PPO on GPU).
-- Pending shared fixes (from hammer): ARM_HOME puts wrist links below the palm (use wrist-up IK branch); UR5e wrist servos over-damped (kv 100 → ~25).
-- Pending shared fixes (from spray): Cartesian straight-line move (`cart_move`/`slerp` in tasks/spray.py) worth promoting into Sim.
-- Hand limits seen: fingers can't wrap thin handles alone (35.5 mm phalanges, 20 mm thick) — objects must seat against palm; thumb only opposes in front of the palm.
-- Pending shared fix (from scissors): scene_base.xml lacks `<compiler angle="radian">`, so joint ranges added via MjSpec are read as degrees (scissors uses np.degrees workaround).
-- Hand limits seen: index MCP roll toward middle hits middle knuckle box; straight-thumb CMC barely moves the tip sideways.
-- Pending shared fixes (from grasps): arm base pedestal (~0.25 m) for table at 0.4 m; multiccd for flat-bottom cylinders; promote postures + cart_move/ik_high into sim.
-- Hand limits seen (align): thumb can't face index pad squarely (~55° off at yaw limit); adjacent knuckle boxes overlap ~7 mm at small roll → roll range unusable; grip hold/slip threshold ~0.01 rad of squeeze.
+- 2026-09-23 consolidation: scene_base has `compiler angle="radian"` (spec-added joint ranges were silently degrees)
+  and multiccd (flat cylinder ends; MJX accepts the flag); `arm_hand(base_height)` adds a pedestal; wrist servos kv 100 → 25
+  (`scene.WRIST_KV`); ARM_HOME is now the wrist-up branch; Sim gained `cart_move` (lerp + slerp), `ik_high`
+  (multi-seed, wrist above site, nearest to current ctrl) and `tip_ik`; postures CURL/PINCH/TRIPOD/KEY_PINCH/HOOK/POWER in sim/hand.py.
+- Arm position servos sag ~1 cm under the hand's weight (no gravity compensation); tasks close the loop on object pose where it matters.
+
+## Hand limits seen
+- Fingers can't wrap thin handles alone (35.5 mm phalanges, 20 mm thick): objects must seat against the palm.
+- Thumb opposes only in front of the palm; it can't face the index pad squarely (~55° off at yaw limit −1.571).
+  Joint ranges match the vendored ROBOTIS model, so this is kept as-is.
+- Adjacent straight fingers touch after ~0.05 rad inward MCP roll (index→middle); flexed 1.6 rad, ~0.15 rad.
+  The vendored mesh model gives the same onsets within ~0.02 rad, so roll is mainly for spreading outward.
+- Straight-thumb CMC barely moves the tip sideways; grip hold/slip threshold is ~0.01 rad of extra squeeze.
