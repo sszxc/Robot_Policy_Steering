@@ -30,7 +30,7 @@ Headless rendering needs `MUJOCO_GL=egl`.
 | 6 | Cube arbitrary reorientation | RL (hand-only, palm up) | done: MJX+PPO 150M steps (~2.5 h); eval 4.8 consecutive successes (0.4 rad tol) per 30 s, 0 drops |
 | 7 | Screwdriver twirl with fingers only | scripted + RL | RL done: 228–268 deg/s CPU (251–280 MJX), both directions, thumb/index/middle gaiting; scripted: index-only 32 deg/s one direction |
 | 8 | Pen spinning | RL | todo |
-| 9 | Baoding balls | RL | todo |
+| 9 | Baoding balls | RL (scripted failed) | done: ~22 half-swaps per 20 s (CPU, 1/10 drops; MJX 65.8 rad, 5% drops); fast flicking gait, ignores 16 s target pace |
 | 10 | Rubik's cube one-face turn | scripted (fixture) done; in-hand RL not solved | done (fixture): 4 consecutive quarter turns, 1 thumb stroke each; in-hand RL 0.25 turns/ep, see report |
 
 ## Decisions log
@@ -74,3 +74,4 @@ sweeps the top layer (CMC −1.4 → 1.0, retract outside), closed-loop on the h
   for this contact-rich task. Next: fixture-based RL first (lower layers fixed), then a curriculum loosening the fixture;
   longer training; check MJX vs CPU contact settings (solver iterations, condim) before trusting CPU evals.
 - RL screwdriver: `python -m rl.train_screwdriver` (152M steps, 3.3 h), eval `python -m rl.eval_screwdriver` → out/rl/screwdriver.mp4. RL model uses a capsule handle (MJX lacks cylinder–box). Caveats: fingertips penetrate up to 4.8 mm (soft contact, 5 solver iters); thumb/index/middle run at the 0.387 Nm limit.
+- RL baoding: two-stage PPO (13.8M steps holding at 8 s/rev, then 51M at 16 s/rev with progress weight 50); best checkpoint 38.3M → out/rl/baoding/best_params.pkl, eval `python -m rl.baoding_eval` → out/rl/baoding.mp4. Scripted CEM gait failed (144° in 20 s): curled fingertips only reach the finger-side half of the palm, so nothing pushes balls toward the wrist.
