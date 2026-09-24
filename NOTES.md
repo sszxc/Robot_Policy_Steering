@@ -29,7 +29,7 @@ Headless rendering needs `MUJOCO_GL=egl`.
 | 5 | In-hand position alignment (slide/pivot a rod to a target) | script first, RL later | partial: slide −20 mm ±0.4, pivot +16° ±0.2, translate ±6 mm ±1 mm; one direction only, RL needed for general |
 | 6 | Cube arbitrary reorientation | RL (hand-only, palm up) | done: MJX+PPO 150M steps (~2.5 h); eval 4.8 consecutive successes (0.4 rad tol) per 30 s, 0 drops |
 | 7 | Screwdriver twirl with fingers only | scripted + RL | RL done: 228–268 deg/s CPU (251–280 MJX), both directions, thumb/index/middle gaiting; scripted: index-only 32 deg/s one direction |
-| 8 | Pen spinning | RL | todo |
+| 8 | Pen spinning (yaw about palm normal) | RL | done: ~5 rad/s both directions (~16 turns / 20 s); MJX 0/64 drops, CPU 1/10; exploit checks passed |
 | 9 | Baoding balls | RL (scripted failed) | done: ~22 half-swaps per 20 s (CPU, 1/10 drops; MJX 65.8 rad, 5% drops); fast flicking gait, ignores 16 s target pace |
 | 10 | Rubik's cube one-face turn | scripted (fixture) done; in-hand RL not solved | done (fixture): 4 consecutive quarter turns, 1 thumb stroke each; in-hand RL 0.25 turns/ep, see report |
 
@@ -75,3 +75,4 @@ sweeps the top layer (CMC −1.4 → 1.0, retract outside), closed-loop on the h
   longer training; check MJX vs CPU contact settings (solver iterations, condim) before trusting CPU evals.
 - RL screwdriver: `python -m rl.train_screwdriver` (152M steps, 3.3 h), eval `python -m rl.eval_screwdriver` → out/rl/screwdriver.mp4. RL model uses a capsule handle (MJX lacks cylinder–box). Caveats: fingertips penetrate up to 4.8 mm (soft contact, 5 solver iters); thumb/index/middle run at the 0.387 Nm limit.
 - RL baoding: two-stage PPO (13.8M steps holding at 8 s/rev, then 51M at 16 s/rev with progress weight 50); best checkpoint 38.3M → out/rl/baoding/best_params.pkl, eval `python -m rl.baoding_eval` → out/rl/baoding.mp4. Scripted CEM gait failed (144° in 20 s): curled fingertips only reach the finger-side half of the palm, so nothing pushes balls toward the wrist.
+- RL pen: pen rests on the proximal phalanges of slightly curled fingers (flat on the palm it can't be pushed sideways → first 110M-step run learned to hold still). Reward 2·yaw rate (clip ±3 rad/s), small offset/tilt terms, drop −10; NaN-safe obs. 204M steps (~2.1 h), best 183.5M → out/rl/pen/best_params.pkl; eval `python -m rl.pen_eval`, exploit checks `python -m rl.pen_check` → out/rl/pen.mp4. Index/middle/ring drive CCW, ring/pinky CW; thumb unused; pen also rolls about its own axis while yawing.
