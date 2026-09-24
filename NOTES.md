@@ -41,6 +41,10 @@ Headless rendering needs `MUJOCO_GL=egl`.
   and multiccd (flat cylinder ends; MJX accepts the flag); `arm_hand(base_height)` adds a pedestal; wrist servos kv 100 → 25
   (`scene.WRIST_KV`); ARM_HOME is now the wrist-up branch; Sim gained `cart_move` (lerp + slerp), `ik_high`
   (multi-seed, wrist above site, nearest to current ctrl) and `tip_ik`; postures CURL/PINCH/TRIPOD/KEY_PINCH/HOOK/POWER in sim/hand.py.
+- 2026-09-24: RL envs had no hand self-collision (hand masks 0/1 → fingers passed through each other by up to 25 mm in
+  all RL policies). Fix: `scene.HAND_SELF_PAIRS` (57 explicit frictionless pairs, sampled so every >1 mm overlap config
+  has one in contact) added by `scene.add_hand_self_pairs` in every RL env; MJX cost ~1.4x (bitmask all-pairs 14x).
+  Scripted tasks were unaffected (default masks). RL results in the task table predate this and need retraining.
 - Arm position servos sag ~1 cm under the hand's weight (no gravity compensation); tasks close the loop on object pose where it matters.
 
 ## Hand limits seen

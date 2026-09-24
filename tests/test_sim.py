@@ -95,3 +95,27 @@ def test_tip_ik_moves_index_tip():
     q = s.tip_ik(q0, {"index": np.array([0, 0, -0.01])})
     s.reset(hand_q=q)
     assert np.linalg.norm(s.site_pos("index_tip") - tip0 - [0, 0, -0.01]) < 1e-3
+
+
+def _max_self_penetration(m, qpos):
+    """Deepest hand<->hand overlap (m) at qpos, checking every hand geom pair (not only the RL pair list)."""
+    c = scene.hand_only().compile()  # default bitmasks: all hand pairs collide
+    d = mujoco.MjData(c)
+    d.qpos[:20] = qpos[:20]
+    mujoco.mj_fwdPosition(c, d)
+    return max([-k.dist for k in d.contact[: d.ncon]] + [0.0])
+
+
+def test_rl_envs_block_finger_pass_through():
+    from rl import baoding_env, cube_env, pen_env, rubik_env, screwdriver_env
+    models = [cube_env.build_model(), pen_env.build_model(), screwdriver_env.build_model(), rubik_env.build_model(),
+              baoding_env.build_model()[0]]
+    crossed = [H.pose(thumb=(1.5, 0, 1.5, 1.5), index=(r, 2.0, 1.5, 1.5), middle=(-r, 2.0, 1.5, 1.5),
+                      ring=(r, 2.0, 1.5, 1.5), pinky=(-r, 2.0, 1.5, 1.5)) for r in (0.6, -0.6)]
+    for m in models:
+        assert m.npair == len(scene.HAND_SELF_PAIRS)
+        for q in crossed:
+            s = Sim(m)
+            s.reset(hand_q=H.OPEN)
+            s.move_hand(q, 1.0)
+            assert _max_self_penetration(m, s.d.qpos) < 0.004

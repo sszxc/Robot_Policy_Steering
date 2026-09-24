@@ -17,7 +17,8 @@ DEFAULT_POSE = H.pose(thumb=(0, -0.5, 0.3, 0.2), index=CRADLE, middle=CRADLE, ri
 
 
 def build_model(sim_dt=0.005, condim=3):
-    """Palm-up hand + free capsule pen; only hand<->pen contacts. condim 3: no torsional friction on the line contact."""
+    """Palm-up hand + free capsule pen; only hand<->pen contacts plus hand self-collision pairs.
+    condim 3: no torsional friction on the line contact."""
     spec = scene.hand_only(pos=HAND_POS)
     b = spec.worldbody.add_body(name="pen", pos=PEN_START, quat=[0.7071068, 0.7071068, 0, 0])
     b.add_freejoint(name="pen")
@@ -25,6 +26,7 @@ def build_model(sim_dt=0.005, condim=3):
                condim=condim, friction=[1, 0.01, 0.001], rgba=[0.15, 0.35, 0.85, 1])
     b.add_geom(name="pen_cap", type=mujoco.mjtGeom.mjGEOM_CYLINDER, size=[PEN_R + 0.0005, 0.012, 0],
                pos=[0, 0, PEN_HALF - 0.012], contype=0, conaffinity=0, density=0, rgba=[0.9, 0.9, 0.9, 1])
+    scene.add_hand_self_pairs(spec)
     m = spec.compile()
     b = m.body("pen").id  # 15 g, 5 mm radius: roll inertia ~2e-7 is unstable in MJX at 5 ms / 5 iters
     m.body_inertia[b] = np.maximum(m.body_inertia[b], 2e-6)

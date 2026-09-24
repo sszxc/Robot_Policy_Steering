@@ -15,7 +15,7 @@ DEFAULT_POSE = H.pose(thumb=(0.6, -0.6, 0.4, 0.3), index=(0, 0.4, 0.3, 0.2), mid
 
 
 def build_model(sim_dt=0.005, goal_marker=False):
-    """Hand-only palm-up scene + cube; only hand<->cube contacts are enabled."""
+    """Hand-only palm-up scene + cube; only hand<->cube contacts plus explicit hand self-collision pairs."""
     spec = scene.hand_only(pos=HAND_POS)
     scene.add_object(spec, "rl_cube.xml", pos=CUBE_START)
     if goal_marker:  # mocap ghost cube showing the goal orientation (adds no qpos)
@@ -25,6 +25,7 @@ def build_model(sim_dt=0.005, goal_marker=False):
         for g in ghost.geoms:
             g.contype = g.conaffinity = 0
             g.rgba[3] = 0.5
+    scene.add_hand_self_pairs(spec)
     m = spec.compile()
     for g in range(m.ngeom):
         body = m.body(m.geom_bodyid[g]).name

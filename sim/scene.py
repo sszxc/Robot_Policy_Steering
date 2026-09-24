@@ -11,6 +11,36 @@ ARM_HOME = np.array([2.723, -1.723, 1.355, 0.368, 1.153, -1.571])
 WRIST_KV = 25  # menagerie wrist servos use kv=100, ~6x overdamped; they lag far behind fast targets
 
 
+# Hand self-collision pairs for RL envs (which disable hand<->hand bitmask contacts for MJX speed).
+# Found by sampling joint configs: every config where any hand pair penetrates > 1 mm has one of these in contact.
+HAND_SELF_PAIRS = [
+    ("palm", "thumb_l3"), ("palm", "thumb_tip"), ("palm", "index_tip"), ("palm", "middle_tip"),
+    ("palm", "ring_tip"), ("palm", "pinky_tip"), ("thumb_l2", "index_tip"), ("thumb_l2", "middle_tip"),
+    ("thumb_l3", "index_mid"), ("thumb_l3", "index_tip"), ("thumb_l3", "middle_tip"), ("thumb_l3", "ring_tip"),
+    ("thumb_tip", "index_knuckle"), ("thumb_tip", "index_prox"), ("thumb_tip", "index_mid"),
+    ("thumb_tip", "index_tip"), ("thumb_tip", "middle_knuckle"), ("thumb_tip", "middle_prox"),
+    ("thumb_tip", "middle_mid"), ("thumb_tip", "middle_tip"), ("thumb_tip", "ring_knuckle"),
+    ("thumb_tip", "ring_prox"), ("thumb_tip", "ring_mid"), ("thumb_tip", "ring_tip"),
+    ("thumb_tip", "pinky_knuckle"), ("thumb_tip", "pinky_prox"), ("thumb_tip", "pinky_mid"),
+    ("thumb_tip", "pinky_tip"), ("index_knuckle", "index_tip"), ("index_knuckle", "middle_knuckle"),
+    ("index_prox", "middle_knuckle"), ("index_mid", "middle_prox"), ("index_mid", "middle_mid"),
+    ("index_mid", "middle_tip"), ("index_tip", "middle_mid"), ("index_tip", "middle_tip"),
+    ("index_tip", "ring_tip"), ("middle_knuckle", "middle_tip"), ("middle_knuckle", "ring_knuckle"),
+    ("middle_prox", "ring_mid"), ("middle_mid", "ring_prox"), ("middle_mid", "ring_mid"),
+    ("middle_mid", "ring_tip"), ("middle_tip", "ring_mid"), ("middle_tip", "ring_tip"),
+    ("middle_tip", "pinky_tip"), ("ring_knuckle", "ring_tip"), ("ring_knuckle", "pinky_knuckle"),
+    ("ring_knuckle", "pinky_prox"), ("ring_prox", "pinky_prox"), ("ring_prox", "pinky_mid"),
+    ("ring_mid", "pinky_prox"), ("ring_mid", "pinky_mid"), ("ring_mid", "pinky_tip"), ("ring_tip", "pinky_mid"),
+    ("ring_tip", "pinky_tip"), ("pinky_knuckle", "pinky_tip"),
+]
+
+
+def add_hand_self_pairs(spec, condim=1):
+    """Explicit frictionless finger<->finger / finger<->palm contacts (~1.4x MJX cost vs none, all 195 pairs ~2.5x)."""
+    for a, b in HAND_SELF_PAIRS:
+        spec.add_pair(geomname1=a, geomname2=b, condim=condim)
+
+
 def hand_quat(palm_dir, finger_dir):
     """Quaternion placing the hand so its palm normal / finger axis point along given world dirs."""
     x = np.asarray(palm_dir, float); x /= np.linalg.norm(x)

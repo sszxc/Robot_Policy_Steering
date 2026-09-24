@@ -6,7 +6,7 @@ import numpy as np
 from brax.envs.base import Env, State
 from mujoco import mjx
 
-from sim import hand as H
+from sim import hand as H, scene
 from tasks import baoding as B
 
 TILT = (-0.3, 0.0)  # (pitch, roll) of the palm: fingers slightly downhill so the balls rest against them
@@ -18,8 +18,10 @@ PALM_X = 0.021                                            # palm surface height 
 
 
 def build_model(sim_dt=0.005):
-    """Hand + balls; only hand<->ball and ball<->ball contacts. Returns (model, R_hand, o_hand)."""
-    m = B.ball_spec(*TILT, solref=(0.02, 1)).compile()
+    """Hand + balls; hand<->ball, ball<->ball and hand self-collision pairs. Returns (model, R_hand, o_hand)."""
+    spec = B.ball_spec(*TILT, solref=(0.02, 1))
+    scene.add_hand_self_pairs(spec)
+    m = spec.compile()
     for g in range(m.ngeom):
         body = m.body(m.geom_bodyid[g]).name
         if body.startswith("ball"):

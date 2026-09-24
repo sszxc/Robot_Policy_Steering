@@ -22,10 +22,11 @@ QUARTER = jnp.pi / 2
 
 
 def build_model(sim_dt=0.005, stickers=False):
-    """Hand-only palm-up scene + free Rubik's cube; only hand<->cube contacts are enabled.
+    """Hand-only palm-up scene + free Rubik's cube; only hand<->cube contacts plus explicit hand self-collision pairs.
     Stickers (~130 visual geoms) are only needed for rendering."""
     spec = scene.hand_only(pos=HAND_POS)
     add_rubik(spec, CUBE_START, stickers=stickers)
+    scene.add_hand_self_pairs(spec)
     m = spec.compile()
     # Only hand<->cube contacts; the top layer skips the hand's boxes (palm, knuckles): box-box is slow in MJX.
     for g in range(m.ngeom):

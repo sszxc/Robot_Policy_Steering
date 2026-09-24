@@ -18,11 +18,12 @@ TIPS = ("thumb", "index", "middle", "ring")
 
 
 def build_model(sim_dt=0.005):
-    """Palm-down hand + screwdriver on a world hinge; only hand<->handle contacts are enabled."""
+    """Palm-down hand + screwdriver on a world hinge; only hand<->handle contacts plus hand self-collision pairs."""
     spec = scene.hand_only(pos=HAND_POS, quat=scene.hand_quat((0, 0, -1), (1, 0, 0)))
     scene.add_object(spec, "screwdriver.xml", pos=(AXIS[0], AXIS[1], Z0))
     g = spec.geom("sd_handle")  # MJX has no cylinder-box collision; capsule with the same span
     g.type, g.size = mujoco.mjtGeom.mjGEOM_CAPSULE, [R, 0.04 - R, 0]
+    scene.add_hand_self_pairs(spec)
     m = spec.compile()
     for g in range(m.ngeom):
         body = m.body(m.geom_bodyid[g]).name

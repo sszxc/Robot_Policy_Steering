@@ -50,17 +50,17 @@
         <inertial pos="0.0238075 0.00131524 0.000460355" quat="-0.0390818 0.710447 -0.167055 0.682518" mass="0.0408685" diaginertia="9.68511e-06 9.63742e-06 2.64401e-06" />
         <joint name="finger_r_joint1" range="-1.570796 1.570796" axis="1 0 0" />
         <geom class="hx5_visual" mesh="hx5_d20_thumb_mcp" />
-        <geom class="hx5_col" fromto="0 0 0 0.039 0 0" size="0.011" />
+        <geom class="hx5_col" name="thumb_l1" fromto="0 0 0 0.039 0 0" size="0.011" />
         <body name="finger_r_link2" pos="0.039 0 0">
           <inertial pos="-0.000356679 0.0139993 0.000359207" quat="0.683782 0.609651 -0.178828 0.358872" mass="0.0117606" diaginertia="1.32233e-06 1.30391e-06 1.03421e-06" />
           <joint name="finger_r_joint2" range="-1.570796 0" axis="0 0 1" />
           <geom class="hx5_visual" mesh="hx5_d20_thumb_mcp2" />
-          <geom class="hx5_col" fromto="0 0 0 0 0.028 0" size="0.011" />
+          <geom class="hx5_col" name="thumb_l2" fromto="0 0 0 0 0.028 0" size="0.011" />
           <body name="finger_r_link3" pos="0 0.028 0">
             <inertial pos="-0.000101462 0.0113435 4.08055e-06" quat="0.489706 0.509394 -0.490285 0.510223" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
             <joint name="finger_r_joint3" range="0 1.570796" axis="1 0 0" />
             <geom class="hx5_visual" mesh="hx5_d20_thumb_ip" />
-            <geom class="hx5_col" fromto="0 0 0 0 0.0355 0" size="0.0100" />
+            <geom class="hx5_col" name="thumb_l3" fromto="0 0 0 0 0.0355 0" size="0.0100" />
             <body name="finger_r_link4" pos="0 0.0355 0">
               <inertial pos="6.6605e-05 0.0168245 0.000223985" quat="0.489485 0.506708 -0.51093 0.492547" mass="0.0438752" diaginertia="1.1354e-05 1.11607e-05 2.79709e-06" />
               <joint name="finger_r_joint4" range="0 1.570796" axis="1 0 0" />
@@ -76,17 +76,17 @@
         <inertial pos="0.0051934 -1.81631e-05 0.0211155" quat="0.567409 0.425612 0.423599 0.56344" mass="0.0388044" diaginertia="5.79224e-06 4.82203e-06 3.41556e-06" />
         <joint name="finger_r_joint5" range="-0.610865 0.610865" axis="1 0 0" />
         <geom class="hx5_visual" mesh="hx5_d20_finger_mcp" />
-        <geom class="knuckle" />
+        <geom class="knuckle" name="index_knuckle" />
         <body name="finger_r_link6" pos="0.0165 0 0.0235">
           <inertial pos="4.08055e-06 0.000101462 0.0241565" quat="0.999803 0.019813 0.000125093 0.000704133" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
           <joint name="finger_r_joint6" range="0 2.007129" axis="0 1 0" />
           <geom class="hx5_visual" mesh="hx5_d20_finger_pip" />
-          <geom class="phalanx" />
+          <geom class="phalanx" name="index_prox" />
           <body name="finger_r_link7" pos="0 0 0.0355">
             <inertial pos="4.08055e-06 0.000101462 0.0241565" quat="0.999803 0.019813 0.000125093 0.000704133" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
             <joint name="finger_r_joint7" range="0 1.570796" axis="0 1 0" />
             <geom class="hx5_visual" mesh="hx5_d20_finger_dip" />
-            <geom class="phalanx" />
+            <geom class="phalanx" name="index_mid" />
             <body name="finger_r_link8" pos="0 0 0.0355">
               <inertial pos="0.000710251 0.000472384 0.0180986" quat="0.997106 0.0409408 0.0613191 -0.018508" mass="0.0136372" diaginertia="2.25027e-06 2.02542e-06 1.05421e-06" />
               <joint name="finger_r_joint8" range="0 1.570796" axis="0 1 0" />
@@ -102,17 +102,17 @@
         <inertial pos="0.0051934 -1.81631e-05 0.0211155" quat="0.567409 0.425612 0.423599 0.56344" mass="0.0388044" diaginertia="5.79224e-06 4.82203e-06 3.41556e-06" />
         <joint name="finger_r_joint9" range="-0.610865 0.610865" axis="1 0 0" />
         <geom class="hx5_visual" mesh="hx5_d20_finger_mcp" />
-        <geom class="knuckle" />
+        <geom class="knuckle" name="middle_knuckle" />
         <body name="finger_r_link10" pos="0.0165 0 0.0235">
           <inertial pos="4.08055e-06 0.000101462 0.0241565" quat="0.999803 0.019813 0.000125093 0.000704133" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
           <joint name="finger_r_joint10" range="0 2.007129" axis="0 1 0" />
           <geom class="hx5_visual" mesh="hx5_d20_finger_pip" />
-          <geom class="phalanx" />
+          <geom class="phalanx" name="middle_prox" />
           <body name="finger_r_link11" pos="0 0 0.0355">
             <inertial pos="4.08055e-06 0.000101462 0.0241565" quat="0.999803 0.019813 0.000125093 0.000704133" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
             <joint name="finger_r_joint11" range="0 1.570796" axis="0 1 0" />
             <geom class="hx5_visual" mesh="hx5_d20_finger_dip" />
-            <geom class="phalanx" />
+            <geom class="phalanx" name="middle_mid" />
             <body name="finger_r_link12" pos="0 0 0.0355">
               <inertial pos="0.000710251 0.000472384 0.0180986" quat="0.997106 0.0409408 0.0613191 -0.018508" mass="0.0136372" diaginertia="2.25027e-06 2.02542e-06 1.05421e-06" />
               <joint name="finger_r_joint12" range="0 1.570796" axis="0 1 0" />
@@ -128,17 +128,17 @@
         <inertial pos="0.0051934 -1.81631e-05 0.0211155" quat="0.567409 0.425612 0.423599 0.56344" mass="0.0388044" diaginertia="5.79224e-06 4.82203e-06 3.41556e-06" />
         <joint name="finger_r_joint13" range="-0.610865 0.610865" axis="1 0 0" />
         <geom class="hx5_visual" mesh="hx5_d20_finger_mcp" />
-        <geom class="knuckle" />
+        <geom class="knuckle" name="ring_knuckle" />
         <body name="finger_r_link14" pos="0.0165 0 0.0235">
           <inertial pos="4.08055e-06 0.000101462 0.0241565" quat="0.999803 0.019813 0.000125093 0.000704133" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
           <joint name="finger_r_joint14" range="0 2.007129" axis="0 1 0" />
           <geom class="hx5_visual" mesh="hx5_d20_finger_pip" />
-          <geom class="phalanx" />
+          <geom class="phalanx" name="ring_prox" />
           <body name="finger_r_link15" pos="0 0 0.0355">
             <inertial pos="4.08055e-06 0.000101462 0.0241565" quat="0.999803 0.019813 0.000125093 0.000704133" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
             <joint name="finger_r_joint15" range="0 1.570796" axis="0 1 0" />
             <geom class="hx5_visual" mesh="hx5_d20_finger_dip" />
-            <geom class="phalanx" />
+            <geom class="phalanx" name="ring_mid" />
             <body name="finger_r_link16" pos="0 0 0.0355">
               <inertial pos="0.000710251 0.000472384 0.0180986" quat="0.997106 0.0409408 0.0613191 -0.018508" mass="0.0136372" diaginertia="2.25027e-06 2.02542e-06 1.05421e-06" />
               <joint name="finger_r_joint16" range="0 1.570796" axis="0 1 0" />
@@ -154,17 +154,17 @@
         <inertial pos="0.0051934 -1.81631e-05 0.0211155" quat="0.567409 0.425612 0.423599 0.56344" mass="0.0388044" diaginertia="5.79224e-06 4.82203e-06 3.41556e-06" />
         <joint name="finger_r_joint17" range="-0.610865 0.610865" axis="1 0 0" />
         <geom class="hx5_visual" mesh="hx5_d20_finger_mcp" />
-        <geom class="knuckle" />
+        <geom class="knuckle" name="pinky_knuckle" />
         <body name="finger_r_link18" pos="0.0165 0 0.0235">
           <inertial pos="4.08055e-06 0.000101462 0.0241565" quat="0.999803 0.019813 0.000125093 0.000704133" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
           <joint name="finger_r_joint18" range="0 2.007129" axis="0 1 0" />
           <geom class="hx5_visual" mesh="hx5_d20_finger_pip" />
-          <geom class="phalanx" />
+          <geom class="phalanx" name="pinky_prox" />
           <body name="finger_r_link19" pos="0 0 0.0355">
             <inertial pos="4.08055e-06 0.000101462 0.0241565" quat="0.999803 0.019813 0.000125093 0.000704133" mass="0.0346897" diaginertia="5.40298e-06 5.04139e-06 2.25369e-06" />
             <joint name="finger_r_joint19" range="0 1.570796" axis="0 1 0" />
             <geom class="hx5_visual" mesh="hx5_d20_finger_dip" />
-            <geom class="phalanx" />
+            <geom class="phalanx" name="pinky_mid" />
             <body name="finger_r_link20" pos="0 0 0.0355">
               <inertial pos="0.000710251 0.000472384 0.0180986" quat="0.997106 0.0409408 0.0613191 -0.018508" mass="0.0136372" diaginertia="2.25027e-06 2.02542e-06 1.05421e-06" />
               <joint name="finger_r_joint20" range="0 1.570796" axis="0 1 0" />
