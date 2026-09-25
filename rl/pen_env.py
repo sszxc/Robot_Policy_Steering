@@ -68,12 +68,12 @@ def dropped_fn(qpos):
 
 class PenEnv(Env):
     def __init__(self, ctrl_dt=0.05, sim_dt=0.005, action_scale=0.15, max_rate=3.0, w_rate=2.0, drop_penalty=10.0,
-                 condim=3):
+                 condim=3, w_offset=5.0):
         self.mj_model = build_model(sim_dt, condim)
         self.mjx_model = mjx.put_model(self.mj_model)
         self.n_frames = int(round(ctrl_dt / sim_dt))
         self.ctrl_dt, self.action_scale, self.max_rate = ctrl_dt, action_scale, max_rate
-        self.w_rate, self.drop_penalty = w_rate, drop_penalty
+        self.w_rate, self.drop_penalty, self.w_offset = w_rate, drop_penalty, w_offset
         self.lo, self.hi = jnp.array(self.mj_model.actuator_ctrlrange.T)
         self.q_pen = jnp.array(self.mj_model.qpos0[20:])
 
@@ -111,17 +111,19 @@ class PenEnv(Env):
         ax = pen_axis(data.qpos[23:27])
         new_yaw = yaw(ax)
         dyaw = (new_yaw - state.info["yaw"] + jnp.pi) % (2 * jnp.pi) - jnp.pi
-        rate = jnp.clip(d * dyaw / self.ctrl_dt, -self.max_rate, self.max_rate)
+        # clip only the forward rate: a symmetric clip let slow-forward/fast-back oscillation earn reward
+        rate = jnp.minimum(d * dyaw / self.ctrl_dt, self.max_rate)
         offset = jnp.linalg.norm(data.qpos[20:22] - PEN_START[:2])
         dropped = dropped_fn(data.qpos)
 
         # reward: yaw rate in the commanded direction; penalize drift only beyond 3 cm, tilt, drops
-        reward = (self.w_rate * rate - 5.0 * jnp.maximum(offset - 0.03, 0) - 0.5 * jnp.abs(ax[2])
+        reward = (self.w_rate * rate - self.w_offset * jnp.maximum(offset - 0.03, 0) - 0.5 * jnp.abs(ax[2])
                   - 0.001 * jnp.sum(action ** 2) - 2e-4 * jnp.sum(data.qvel[:20] ** 2) - self.drop_penalty * dropped)
 
         info = {**state.info, "yaw": new_yaw, "turn": state.info["turn"] + d * dyaw}
         metrics = {**state.metrics, "turn": d * dyaw, "dropped": dropped.astype(jnp.float32), "offset": offset}
-        nan = jnp.isnan(data.qpos).any() | jnp.isnan(data.qvel).any()
+        # finite-but-exploded qvel overflows the qvel² term to -inf and NaNs the PPO update
+        nan = ~jnp.isfinite(data.qpos).all() | ~jnp.isfinite(data.qvel).all() | (jnp.abs(data.qvel).max() > 1e3)
         done = (dropped | nan).astype(jnp.float32)
         obs = observe(data.qpos, data.qvel, data.ctrl, d)
         return state.replace(pipeline_state=data, obs=obs, reward=jnp.where(nan, 0.0, reward), done=done,

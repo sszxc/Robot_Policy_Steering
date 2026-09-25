@@ -23,6 +23,7 @@ p.add_argument("--restore", help="params .pkl to warm-start from")
 p.add_argument("--condim", type=int, default=3)
 p.add_argument("--w_rate", type=float, default=2.0)
 p.add_argument("--drop_penalty", type=float, default=10.0)
+p.add_argument("--w_offset", type=float, default=5.0, help="penalty per m of pen drift beyond 3 cm")
 a = p.parse_args()
 os.makedirs(a.out, exist_ok=True)
 log = open(os.path.join(a.out, "log.txt"), "a")
@@ -49,8 +50,8 @@ restore = pickle.load(open(a.restore, "rb")) if a.restore else None
 net = functools.partial(ppo_networks.make_ppo_networks, policy_hidden_layer_sizes=(512, 256, 128),
                         value_hidden_layer_sizes=(512, 256, 128))
 ppo.train(
-    environment=PenEnv(w_rate=a.w_rate, drop_penalty=a.drop_penalty, condim=a.condim),
-    eval_env=PenEnv(w_rate=a.w_rate, drop_penalty=a.drop_penalty, condim=a.condim), num_timesteps=a.steps,
+    environment=PenEnv(w_rate=a.w_rate, drop_penalty=a.drop_penalty, condim=a.condim, w_offset=a.w_offset),
+    eval_env=PenEnv(w_rate=a.w_rate, drop_penalty=a.drop_penalty, condim=a.condim, w_offset=a.w_offset), num_timesteps=a.steps,
     num_evals=a.evals, episode_length=400, num_envs=a.envs, num_eval_envs=128, unroll_length=40,
     batch_size=256, num_minibatches=16, num_updates_per_batch=4, discounting=0.99, learning_rate=3e-4,
     entropy_cost=1e-2, reward_scaling=0.1, normalize_observations=True, max_grad_norm=1.0,
