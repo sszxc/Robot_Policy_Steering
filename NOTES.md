@@ -27,7 +27,7 @@ Headless rendering needs `MUJOCO_GL=egl`.
 | 3 | Hammer a nail | script, arm+hand | done: 2.2 cm in 8 strikes, 230 g hammer |
 | 4 | Scissors open/close | script, hand-only | done: 5 cycles, 75–85% of range; paper cut faked by weld release |
 | 5 | In-hand position alignment (slide/pivot a rod to a target) | script first, RL later | partial: slide −20 mm ±0.4, pivot +16° ±0.2, translate ±6 mm ±1 mm; one direction only, RL needed for general |
-| 6 | Cube arbitrary reorientation | RL (hand-only, palm up) | done: MJX+PPO 150M steps (~2.5 h); eval 4.8 consecutive successes (0.4 rad tol) per 30 s, 0 drops |
+| 6 | Cube arbitrary reorientation | RL (hand-only, palm up) | done (self-collision, 2026-09-25): MJX+PPO ~154M steps (36.7M + 117M warm-start in out/rl/cube/cont); eval 4.0 consecutive successes (0.4 rad tol) per 30 s, 0 drops (5 ep); 5.0 / 1 drop over 20 ep |
 | 7 | Screwdriver twirl with fingers only | scripted + RL | RL done (self-collision, 2026-09-25): 281–288 deg/s CPU (~290 MJX), both directions, thumb/index/middle gaiting; scripted: index-only 32 deg/s one direction |
 | 8 | Pen spinning (yaw about palm normal) | RL | partial (self-collision retrain, 2026-09-25): one half-turn (~185°) then holds, 0.17 rad/s both directions; 0/10 CPU, 0/64 MJX drops; exploit checks passed. Pre-fix ~5 rad/s relied on finger pass-through; 6 runs (out/rl/pen/run1–6, best run6 54.1M) did not recover gaiting |
 | 9 | Baoding balls | RL (scripted failed) | done (self-collision, 2026-09-25): ~21 half-swaps per 20 s (CPU, 1/10 drops; MJX 66.2 rad, 9% drops); fast flicking gait, ignores 16 s target pace; pace-tracking variant 442°/450° per 20 s, 0 drops |
