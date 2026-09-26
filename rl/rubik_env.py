@@ -18,6 +18,7 @@ CUBE_START = np.array([0.075, 0.0, 0.3 + 0.021 + EDGE / 2 + 0.001])  # resting o
 DEFAULT_POSE = H.pose(thumb=(0.6, -0.6, 0.4, 0.3), index=(0, 0.4, 0.3, 0.2), middle=(0, 0.4, 0.3, 0.2),
                       ring=(0, 0.4, 0.3, 0.2), pinky=(0, 0.4, 0.3, 0.2))
 QUARTER = jnp.pi / 2
+ASSIST_KP, ASSIST_KD, ASSIST_KR, ASSIST_KDR = 200.0, 3.0, 0.5, 0.005  # full-strength virtual fixture (N/m, Ns/m, Nm/rad, Nms/rad)
 # qpos: hand 0:20, cube free joint 20:27, top-layer hinge 27; qvel: hand 0:20, cube 20:26, hinge 26
 
 
@@ -52,11 +53,14 @@ def observe(qpos, qvel, ctrl, target):
 
 
 class RubikEnv(Env):
-    def __init__(self, ctrl_dt=0.05, sim_dt=0.005, action_scale=0.15, success_tol=np.radians(10)):
+    def __init__(self, ctrl_dt=0.05, sim_dt=0.005, action_scale=0.15, success_tol=np.radians(10), assist_prob=0.0,
+                 w_vel=0.0, w_prog=20.0, detent=DETENT):
+        # assist_prob: fraction of episodes where a spring fixture (random strength) holds the lower body; w_vel: anti-fling
         self.mj_model = build_model(sim_dt)
         self.mjx_model = mjx.put_model(self.mj_model)
         self.n_frames = int(round(ctrl_dt / sim_dt))
         self.action_scale, self.success_tol = action_scale, success_tol
+        self.assist_prob, self.w_vel, self.w_prog, self.detent = assist_prob, w_vel, w_prog, detent
         self.lo, self.hi = jnp.array(self.mj_model.actuator_ctrlrange.T)
 
     @property
@@ -72,7 +76,7 @@ class RubikEnv(Env):
         return "mjx"
 
     def reset(self, rng):
-        r1, r2, r3 = jax.random.split(rng, 3)
+        r1, r2, r3, r4, r5 = jax.random.split(rng, 5)
         hand_q = jnp.clip(DEFAULT_POSE + 0.05 * jax.random.normal(r1, (20,)), self.lo, self.hi)
         cube_pos = CUBE_START + jnp.array([0.005, 0.005, 0.0]) * jax.random.normal(r2, (3,))
         qpos = jnp.concatenate([hand_q, cube_pos, jnp.array([1.0, 0, 0, 0, 0])])
@@ -80,23 +84,27 @@ class RubikEnv(Env):
         data = mjx.forward(self.mjx_model, data)
         sign = jnp.where(jax.random.bernoulli(r3), 1.0, -1.0)  # turn direction for this episode
         target = sign * QUARTER
-        info = {"rng": rng, "sign": sign, "target": target, "successes": jnp.zeros(()),
+        assist = jax.random.bernoulli(r4, self.assist_prob) * jax.random.uniform(r5)
+        info = {"rng": rng, "sign": sign, "target": target, "successes": jnp.zeros(()), "assist": assist,
                 "last_err": jnp.abs(target)}
         obs = observe(data.qpos, data.qvel, data.ctrl, target)
         metrics = {"successes": jnp.zeros(()), "layer_err": jnp.zeros(()), "dropped": jnp.zeros(()),
                    "cube_rot": jnp.zeros(())}
         return State(data, obs, jnp.zeros(()), jnp.zeros(()), metrics, info)
 
-    def _physics(self, data):
-        def one(_, d):  # 4-fold detent on the hinge, like tasks/rubik.add_detent
-            return mjx.step(self.mjx_model, d.replace(qfrc_applied=d.qfrc_applied.at[26].set(
-                -DETENT * jnp.sin(4 * d.qpos[27]))))
+    def _physics(self, data, assist):
+        def one(_, d):  # 4-fold detent on the hinge (like tasks/rubik.add_detent) + optional spring fixture on the cube
+            rot = 2 * jnp.sign(d.qpos[23] + 1e-9) * d.qpos[24:27]  # small-angle rotvec vs identity
+            fix = jnp.concatenate([-ASSIST_KP * (d.qpos[20:23] - CUBE_START) - ASSIST_KD * d.qvel[20:23],
+                                   -ASSIST_KR * rot - ASSIST_KDR * d.qvel[23:26]])
+            f = d.qfrc_applied.at[26].set(-self.detent * jnp.sin(4 * d.qpos[27])).at[20:26].set(assist * fix)
+            return mjx.step(self.mjx_model, d.replace(qfrc_applied=f))
         return jax.lax.fori_loop(0, self.n_frames, one, data)
 
     def step(self, state, action):
         data = state.pipeline_state
         ctrl = jnp.clip(data.ctrl + self.action_scale * action, self.lo, self.hi)
-        data = self._physics(data.replace(ctrl=ctrl))
+        data = self._physics(data.replace(ctrl=ctrl), state.info["assist"])
 
         target = state.info["target"]
         err = jnp.abs(data.qpos[27] - target)
@@ -106,8 +114,9 @@ class RubikEnv(Env):
         success = (err < self.success_tol) & (jnp.abs(data.qvel[26]) < 1.0)
 
         # reward: layer progress toward target, keep the cube still in the palm, success bonus, drop penalty
-        reward = (20.0 * (state.info["last_err"] - err) + 0.5 / (err + 0.1) - 10.0 * dist - 0.5 * cube_rot
-                  - 0.001 * jnp.sum(action ** 2) + 100.0 * success - 100.0 * dropped)
+        reward = (self.w_prog * (state.info["last_err"] - err) + 0.5 / (err + 0.1) - 10.0 * dist - 0.5 * cube_rot
+                  - 0.001 * jnp.sum(action ** 2) + 100.0 * success - 100.0 * dropped
+                  - self.w_vel * jnp.linalg.norm(data.qvel[20:23]))
 
         target = jnp.where(success, target + state.info["sign"] * QUARTER, target)
         info = {**state.info, "target": target, "successes": state.info["successes"] + success,

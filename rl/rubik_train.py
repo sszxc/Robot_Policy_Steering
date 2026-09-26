@@ -1,4 +1,4 @@
-"""Brax PPO on RubikEnv (same settings as rl/train_cube.py). Example: python -m rl.rubik_train --steps 60_000_000"""
+"""Brax PPO on RubikEnv (same settings as rl/cube_train.py). Example: python -m rl.rubik_train --steps 60_000_000"""
 import argparse
 import functools
 import os
@@ -19,6 +19,10 @@ p.add_argument("--steps", type=int, default=60_000_000)
 p.add_argument("--envs", type=int, default=4096)
 p.add_argument("--evals", type=int, default=30)
 p.add_argument("--out", default="out/rl/rubik")
+p.add_argument("--assist_prob", type=float, default=0.0, help="fraction of training episodes with a spring fixture")
+p.add_argument("--w_vel", type=float, default=0.0, help="cube linear-speed penalty (anti-fling)")
+p.add_argument("--w_prog", type=float, default=20.0, help="layer progress reward weight")
+p.add_argument("--detent", type=float, default=0.01, help="training detent peak torque (eval env keeps 0.01)")
 p.add_argument("--restore", help="params .pkl to warm-start from")
 a = p.parse_args()
 os.makedirs(a.out, exist_ok=True)
@@ -46,7 +50,9 @@ restore = pickle.load(open(a.restore, "rb")) if a.restore else None
 net = functools.partial(ppo_networks.make_ppo_networks, policy_hidden_layer_sizes=(512, 256, 128),
                         value_hidden_layer_sizes=(512, 256, 128))
 ppo.train(
-    environment=RubikEnv(), eval_env=RubikEnv(), num_timesteps=a.steps,
+    environment=RubikEnv(assist_prob=a.assist_prob, w_vel=a.w_vel, w_prog=a.w_prog,
+                         detent=a.detent), eval_env=RubikEnv(),  # eval env: no fixture
+    num_timesteps=a.steps,
     num_evals=a.evals, episode_length=600, num_envs=a.envs, num_eval_envs=128, unroll_length=40,
     batch_size=256, num_minibatches=32, num_updates_per_batch=4, discounting=0.99, learning_rate=3e-4,
     entropy_cost=1e-2, reward_scaling=0.1, normalize_observations=True, max_grad_norm=1.0,
