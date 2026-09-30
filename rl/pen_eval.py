@@ -18,6 +18,7 @@ p = argparse.ArgumentParser()
 p.add_argument("--params", default="out/rl/pen/best_params.pkl")
 p.add_argument("--episodes", type=int, default=10)
 p.add_argument("--video", default="out/rl/pen.mp4")
+p.add_argument("--viewer", action="store_true")
 p.add_argument("--condim", type=int, default=3)
 a = p.parse_args()
 
@@ -35,7 +36,7 @@ FINGERS = {"thumb": range(1, 5), "index": range(5, 9), "middle": range(9, 13), "
 rng, out = np.random.default_rng(0), []
 for ep in range(a.episodes):
     d = 1.0 if ep % 2 == 0 else -1.0
-    s = Sim(m, video=a.video.replace(".mp4", f"_{'ccw' if d > 0 else 'cw'}.mp4") if ep < 2 else None, cam=cam)
+    s = Sim(m, viewer=a.viewer, video=a.video.replace(".mp4", f"_{'ccw' if d > 0 else 'cw'}.mp4") if ep < 2 else None, cam=cam)
     s.reset(hand_q=np.clip(E.DEFAULT_POSE, lo, hi))
     if ep >= 2:  # same 5 mm xy pen noise as the MJX env reset
         s.d.qpos[20:22] += rng.normal(0, 0.005, 2)

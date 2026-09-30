@@ -1,5 +1,5 @@
 """Run a trained cube policy in CPU MuJoCo, record video, report consecutive successes.
-Example: MUJOCO_GL=egl python -m rl.eval_cube --params out/rl/cube/params.pkl --episodes 5"""
+Example: MUJOCO_GL=egl python -m rl.cube_eval --params out/rl/cube/params.pkl --episodes 5"""
 import argparse
 import os
 import pickle
@@ -21,6 +21,7 @@ p.add_argument("--params", default="out/rl/cube/params.pkl")
 p.add_argument("--episodes", type=int, default=5)
 p.add_argument("--video_episodes", type=int, default=2)
 p.add_argument("--video", default="out/rl/cube.mp4")
+p.add_argument("--viewer", action="store_true")
 p.add_argument("--goal", default="full", choices=["full", "z"])
 p.add_argument("--seed", type=int, default=0)
 a = p.parse_args()
@@ -49,7 +50,7 @@ def random_goal():
 
 results = []
 for ep in range(a.episodes):
-    s = Sim(m, video=a.video.replace(".mp4", f"_{ep}.mp4") if ep < a.video_episodes else None, cam=cam)
+    s = Sim(m, viewer=a.viewer, video=a.video.replace(".mp4", f"_{ep}.mp4") if ep < a.video_episodes else None, cam=cam)
     s.reset(hand_q=np.clip(DEFAULT_POSE, lo, hi))
     s.d.qpos[20:27] = [*CUBE_START, 1, 0, 0, 0]
     goal = random_goal()

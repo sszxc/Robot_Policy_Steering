@@ -19,6 +19,7 @@ p.add_argument("--params", default="out/rl/baoding/best_params.pkl")
 p.add_argument("--period", type=float, default=16.0)
 p.add_argument("--episodes", type=int, default=5)
 p.add_argument("--video", default="out/rl/baoding.mp4")
+p.add_argument("--viewer", action="store_true")
 a = p.parse_args()
 
 net = ppo_networks.make_ppo_networks(78, 20, preprocess_observations_fn=running_statistics.normalize,
@@ -33,7 +34,7 @@ omega = 2 * np.pi / a.period
 cam = dict(lookat=o + R @ E.CENTER, distance=0.32, azimuth=180, elevation=-60)
 turns, rng = [], np.random.default_rng(0)
 for ep in range(a.episodes):
-    s = Sim(m, video=a.video if ep == 0 else None, cam=cam)
+    s = Sim(m, viewer=a.viewer, video=a.video if ep == 0 else None, cam=cam)
     s.reset(hand_q=np.clip(E.DEFAULT_POSE, lo, hi))
     if ep > 0:  # same 3 mm in-plane ball noise as the MJX env reset
         for adr in (20, 27):

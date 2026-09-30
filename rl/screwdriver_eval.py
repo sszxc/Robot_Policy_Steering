@@ -1,5 +1,5 @@
 """Run a trained screwdriver policy in CPU MuJoCo (both directions), record video, report speed and contacts.
-Example: MUJOCO_GL=egl python -m rl.eval_screwdriver --params out/rl/screwdriver/params.pkl"""
+Example: MUJOCO_GL=egl python -m rl.screwdriver_eval --params out/rl/screwdriver/params.pkl"""
 import argparse
 import os
 import pickle
@@ -18,6 +18,7 @@ p = argparse.ArgumentParser()
 p.add_argument("--params", default="out/rl/screwdriver/params.pkl")
 p.add_argument("--seconds", type=float, default=10.0, help="per direction")
 p.add_argument("--video", default="out/rl/screwdriver.mp4")
+p.add_argument("--viewer", action="store_true")
 p.add_argument("--directions", default="1,-1")
 a = p.parse_args()
 
@@ -30,7 +31,7 @@ obs_fn = jax.jit(observe)
 m = build_model()
 lo, hi = m.actuator_ctrlrange.T
 cam = dict(lookat=np.array([AXIS[0], AXIS[1], 0.2]), distance=0.42, azimuth=145, elevation=-22)
-s = Sim(m, video=a.video, cam=cam)
+s = Sim(m, viewer=a.viewer, video=a.video, cam=cam)
 key = jax.random.PRNGKey(0)
 for direction in [float(d) for d in a.directions.split(",")]:
     s.reset(hand_q=np.clip(DEFAULT_POSE, lo, hi))

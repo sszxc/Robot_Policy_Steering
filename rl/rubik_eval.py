@@ -20,6 +20,7 @@ p.add_argument("--params", default="out/rl/rubik/params.pkl")
 p.add_argument("--episodes", type=int, default=5)
 p.add_argument("--video_episodes", type=int, default=2)
 p.add_argument("--video", default="out/rl/rubik.mp4")
+p.add_argument("--viewer", action="store_true")
 a = p.parse_args()
 
 net = ppo_networks.make_ppo_networks(76, 20, preprocess_observations_fn=running_statistics.normalize,
@@ -35,7 +36,7 @@ tol = np.radians(10)
 
 results = []
 for ep in range(a.episodes):
-    s = add_detent(Sim(m, video=a.video.replace(".mp4", f"_{ep}.mp4") if ep < a.video_episodes else None, cam=cam))
+    s = add_detent(Sim(m, viewer=a.viewer, video=a.video.replace(".mp4", f"_{ep}.mp4") if ep < a.video_episodes else None, cam=cam))
     s.reset(hand_q=np.clip(DEFAULT_POSE, lo, hi))
     s.d.qpos[20:28] = [*CUBE_START, 1, 0, 0, 0, 0]
     sign = 1.0 if ep % 2 == 0 else -1.0
