@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>thesis_scene</name>
+  <version>0.1.0</version>
+  <description>UR5 + table + ceiling camera scene for Gazebo (Fortress) and MoveIt</description>
+  <maintainer email="zhang.xc@asu.edu">Xuechao</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>ur_description</exec_depend>
+  <exec_depend>ur_moveit_config</exec_depend>
+  <exec_depend>ur_controllers</exec_depend>
+  <exec_depend>ros_gz_sim</exec_depend>
+  <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ign_ros2_control</exec_depend>
+  <exec_depend>xacro</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>
