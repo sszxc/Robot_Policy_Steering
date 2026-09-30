@@ -3,3 +3,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .claude/
+
+# Independent local checkouts; keep their histories separate from this project.
+/lerobot/
+/old_ros_env_for_reference/
+
+# ROS 2 workspace build products (the package source lives under ros2_ws/src).
+/ros2_ws/build/
+/ros2_ws/install/
+/ros2_ws/log/
