@@ -1,0 +1,271 @@
+diff --git a/lerobot/src/lerobot/scripts/lerobot_eval.py b/lerobot/src/lerobot/scripts/lerobot_eval.py
+index 023759f9..78fac6b2 100644
+--- a/lerobot/src/lerobot/scripts/lerobot_eval.py
++++ b/lerobot/src/lerobot/scripts/lerobot_eval.py
+@@ -52,6 +52,7 @@ You can learn about the CLI options for this script in the `EvalPipelineConfig`
+ import concurrent.futures as cf
+ import json
+ import logging
++import textwrap
+ import threading
+ import time
+ from collections import defaultdict
+@@ -446,6 +447,7 @@ def eval_policy(
+     recording_repo_id: str | None = None,
+     recording_private: bool = False,
+     save_predicted_video: bool = False,
++    task_description: str | None = None,
+ ) -> dict:
+     """
+     Args:
+@@ -494,6 +496,7 @@ def eval_policy(
+     max_rewards = []
+     all_successes = []
+     all_seeds: list[int | None] = []
++    episode_traces: list[dict[str, Any]] = []
+     threads = []  # for video saving threads
+     n_episodes_rendered = 0  # for saving the correct number of videos
+ 
+@@ -512,6 +515,10 @@ def eval_policy(
+ 
+     if max_episodes_rendered > 0:
+         video_paths: list[str] = []
++        # Keep an explicit link between each rendered rollout and the language
++        # instruction that conditioned it. Video file names alone only encode
++        # the episode index.
++        video_metadata: list[dict[str, str | int | None]] = []
+ 
+     if save_predicted_video:
+         if not videos_dir:
+@@ -572,6 +579,26 @@ def eval_policy(
+         # Note: this relies on a property of argmax: that it returns the first occurrence as a tiebreaker.
+         done_indices = torch.argmax(rollout_data["done"].to(int), dim=1)
+ 
++        # Persist only the valid part of every trajectory. Vectorized rollouts
++        # continue stepping until the final sub-environment finishes, so values
++        # after an individual episode's first `done` are not meaningful.
++        for env_ix, done_index in enumerate(done_indices.tolist()):
++            episode_ix = batch_ix * env.num_envs + env_ix
++            if episode_ix >= n_episodes:
++                break
++            n_steps_this_episode = done_index + 1
++            episode_traces.append(
++                {
++                    "episode_ix": episode_ix,
++                    "seed": None if seeds is None else seeds[env_ix],
++                    "n_steps": n_steps_this_episode,
++                    "reward": rollout_data["reward"][env_ix, :n_steps_this_episode].tolist(),
++                    "success": rollout_data["success"][env_ix, :n_steps_this_episode]
++                    .to(torch.bool)
++                    .tolist(),
++                }
++            )
++
+         # Make a mask with shape (batch, n_steps) to mask out rollout data after the first done
+         # (batch-element-wise). Note the `done_indices + 1` to make sure to keep the data from the done step.
+         mask = (torch.arange(n_steps) <= einops.repeat(done_indices + 1, "b -> b s", s=n_steps)).int()
+@@ -619,6 +646,13 @@ def eval_policy(
+                 videos_dir.mkdir(parents=True, exist_ok=True)
+                 video_path = videos_dir / f"eval_episode_{n_episodes_rendered}.mp4"
+                 video_paths.append(str(video_path))
++                video_metadata.append(
++                    {
++                        "path": str(video_path),
++                        "episode_ix": n_episodes_rendered,
++                        "task_description": task_description,
++                    }
++                )
+                 thread = threading.Thread(
+                     target=write_video,
+                     args=(
+@@ -691,6 +725,7 @@ def eval_policy(
+                 )
+             )
+         ],
++        "episode_traces": episode_traces,
+         "aggregated": {
+             "avg_sum_reward": float(np.nanmean(sum_rewards[:n_episodes])),
+             "avg_max_reward": float(np.nanmean(max_rewards[:n_episodes])),
+@@ -708,6 +743,7 @@ def eval_policy(
+ 
+     if max_episodes_rendered > 0:
+         info["video_paths"] = video_paths
++        info["video_metadata"] = video_metadata
+ 
+     if save_predicted_video:
+         info["predicted_video_paths"] = predicted_video_paths
+@@ -762,6 +798,88 @@ def _compile_episode_data(
+     return data_dict
+ 
+ 
++def _save_task_trajectory_plot(task_info: dict[str, Any], traces: list[dict[str, Any]], path: Path) -> None:
++    """Plot per-step reward and success statistics across a task's episodes."""
++    import matplotlib
++
++    matplotlib.use("Agg")
++    import matplotlib.pyplot as plt
++
++    if not traces:
++        return
++
++    def as_matrix(key: str) -> np.ndarray:
++        max_steps = max(len(trace[key]) for trace in traces)
++        values = np.full((len(traces), max_steps), np.nan, dtype=float)
++        for row, trace in enumerate(traces):
++            values[row, : len(trace[key])] = trace[key]
++        return values
++
++    rewards = as_matrix("reward")
++    # An episode's only true ``success`` value is its terminal transition.  Do
++    # not average that pulse directly: a successfully finished episode has no
++    # later entries, so it would disappear from the denominator and make the
++    # curve fall back to zero.  Latch success and extend it to the common
++    # horizon, yielding the intuitive fraction of all episodes that have
++    # succeeded by each step.
++    successes = np.zeros_like(rewards)
++    for row, trace in enumerate(traces):
++        n_steps = len(trace["success"])
++        cumulative_success = np.maximum.accumulate(np.asarray(trace["success"], dtype=bool))
++        successes[row, :n_steps] = cumulative_success
++        if n_steps < successes.shape[1] and cumulative_success[-1]:
++            successes[row, n_steps:] = True
++    steps = np.arange(rewards.shape[1])
++    final_successes = [bool(np.any(trace["success"])) for trace in traces]
++    success_rate = 100 * float(np.mean(final_successes))
++
++    figure, axes = plt.subplots(2, 1, sharex=True, figsize=(9, 6), constrained_layout=True)
++    for axis, values, label in (
++        (axes[0], rewards, "Reward"),
++        (axes[1], successes, "Cumulative success rate"),
++    ):
++        mean = np.nanmean(values, axis=0)
++        std = np.nanstd(values, axis=0)
++        axis.plot(steps, mean, color="#1f77b4", linewidth=2, label="mean")
++        axis.fill_between(steps, mean - std, mean + std, color="#1f77b4", alpha=0.22, label="±1 std")
++        axis.set_ylabel(label)
++        axis.grid(alpha=0.25)
++        axis.legend(loc="best")
++
++    axes[1].set_xlabel("Environment step")
++    description = textwrap.fill(task_info["task_description"], width=80)
++    figure.suptitle(
++        f"{task_info['task_group']} task {task_info['task_id']} | "
++        f"{len(traces)} episodes | total success: {success_rate:.1f}%\n{description}",
++        fontsize=10,
++    )
++    path.parent.mkdir(parents=True, exist_ok=True)
++    figure.savefig(path, dpi=160)
++    plt.close(figure)
++
++
++def _save_task_episode_artifacts(
++    task_group: str, task_id: int, metrics: dict[str, Any], output_dir: Path
++) -> None:
++    """Immediately persist one completed task's per-step data and summary plot."""
++    output_dir.mkdir(parents=True, exist_ok=True)
++    traces = metrics.pop("episode_traces")
++    trace_path = output_dir / "episode_traces" / f"{task_group}_{task_id}.json"
++    plots_dir = output_dir / "plots"
++    plot_path = plots_dir / f"{task_group}_{task_id}_trajectory.png"
++    task_info = {
++        "task_group": task_group,
++        "task_id": task_id,
++        "task_description": metrics["task_description"],
++    }
++    trace_path.parent.mkdir(parents=True, exist_ok=True)
++    with open(trace_path, "w") as f:
++        json.dump({**task_info, "episodes": traces}, f, indent=2)
++    _save_task_trajectory_plot(task_info, traces, plot_path)
++    metrics["episode_trace_path"] = str(trace_path)
++    metrics["trajectory_plot_path"] = str(plot_path)
++
++
+ @parser.wrap()
+ def eval_main(cfg: EvalPipelineConfig) -> None:
+     logging.info(pformat(asdict(cfg)))
+@@ -841,6 +959,7 @@ def eval_main(cfg: EvalPipelineConfig) -> None:
+             env_features=cfg.env.features if cfg.eval.recording else None,
+             recording_repo_id=cfg.eval.recording_repo_id,
+             recording_private=cfg.eval.recording_private,
++            artifacts_dir=Path(cfg.output_dir),
+         )
+         logger.info("Overall Aggregated Metrics:")
+         logger.info(info["overall"])
+@@ -874,7 +993,10 @@ class TaskMetrics(TypedDict):
+     max_rewards: list[float]
+     successes: list[bool]
+     video_paths: list[str]
++    video_metadata: list[dict[str, str | int | None]]
+     predicted_video_paths: list[str]
++    task_description: str
++    episode_traces: list[dict[str, Any]]
+ 
+ 
+ ACC_KEYS = ("sum_rewards", "max_rewards", "successes", "video_paths", "predicted_video_paths")
+@@ -901,6 +1023,12 @@ def eval_one(
+     """Evaluates one task_id of one suite using the provided vec env."""
+ 
+     task_videos_dir = videos_dir
++    # LIBERO exposes the natural-language instruction through this environment
++    # attribute. All vectorized sub-environments here represent one task.
++    try:
++        task_description = str(list(env.call("task_description"))[0])
++    except (AttributeError, NotImplementedError):
++        task_description = str(list(env.call("task"))[0])
+ 
+     task_result = eval_policy(
+         env=env,
+@@ -918,6 +1046,7 @@ def eval_one(
+         env_features=env_features,
+         recording_repo_id=recording_repo_id,
+         recording_private=recording_private,
++        task_description=task_description,
+     )
+ 
+     per_episode = task_result["per_episode"]
+@@ -926,7 +1055,10 @@ def eval_one(
+         max_rewards=[ep["max_reward"] for ep in per_episode],
+         successes=[ep["success"] for ep in per_episode],
+         video_paths=task_result.get("video_paths", []),
++        video_metadata=task_result.get("video_metadata", []),
+         predicted_video_paths=task_result.get("predicted_video_paths", []),
++        task_description=task_description,
++        episode_traces=task_result["episode_traces"],
+     )
+ 
+ 
+@@ -996,6 +1128,8 @@ def _task_info(task_group: str, task_id: int, metrics: dict) -> dict:
+     return {
+         "task_group": task_group,
+         "task_id": task_id,
++        "task_description": metrics["task_description"],
++        "video_metadata": metrics.get("video_metadata", []),
+         "metrics": metrics,
+         **success_summary(metrics.get("successes") or []),
+     }
+@@ -1019,6 +1153,7 @@ def eval_policy_all(
+     return_episode_data: bool = False,
+     start_seed: int | None = None,
+     max_parallel_tasks: int = 1,
++    artifacts_dir: Path | None = None,
+ ) -> dict:
+     """
+     Evaluate a nested `envs` dict: {task_group: {task_id: vec_env}}.
+@@ -1095,6 +1230,8 @@ def eval_policy_all(
+ 
+                 try:
+                     tg, tid, metrics = task_runner(task_group, task_id, env)
++                    if artifacts_dir is not None:
++                        _save_task_episode_artifacts(tg, tid, metrics, artifacts_dir)
+                     _accumulate_to(tg, metrics)
+                     per_task_infos.append(_task_info(tg, tid, metrics))
+                 finally:
+@@ -1116,6 +1253,8 @@ def eval_policy_all(
+                     tg, tid, env = fut2meta[fut]
+                     try:
+                         tg, tid, metrics = fut.result()
++                        if artifacts_dir is not None:
++                            _save_task_episode_artifacts(tg, tid, metrics, artifacts_dir)
+                         _accumulate_to(tg, metrics)
+                         per_task_infos.append(_task_info(tg, tid, metrics))
+                     finally:

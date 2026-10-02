@@ -10,5 +10,16 @@ Current simulation will based on SmolVLA pretrained model and LIBERO benchmark.
 The final hardware experiment for this project will use a UR5 (not a UR5e) robotic arm and a HX5-D20-MRT-Right multi-fingered dexterous hand.
 
 
-# Code Configuration
+# Computing Environment
+Small validation experiments can be run locally.
 Use Python: /home/lab/miniforge3/bin/python
+
+
+There's a remote supercomputer available for use. Start with `docs/ASU_Sol_HPC_quick.md` for common commands; consult `docs/ASU_Sol_HPC_reference.md` for details and `skills/ASU_Sol_HPC` for task-specific guidance. Prefer current cluster queries over generic skill defaults. My asurite ID is: `xzhan742`.
+Repo root: ~/Coding/thesis
+Use Python env: /scratch/xzhan742/thesis/envs/smolvla-libero-py312-v3
+Data root: /scratch/xzhan742/thesis
+
+
+# Code Structure
+This project currently has only one user and is in a state of agile development. If we need to refactor or adjust the APIs, we don't have to worry about backwards compatibility.

@@ -15,8 +15,9 @@ if [[ ! -f "$LIBERO_CONFIG_PATH/config.yaml" ]]; then
   printf 'n\n' | python -c 'import libero.libero'
 fi
 
-# The `lerobot/smolvla_libero` Hub revision currently declares three cameras,
-# while standard LIBERO exposes two. This original release has the matching
+# The official `lerobot/smolvla_libero` checkpoint expects three cameras
+# (`camera1`, `camera2`, `camera3`) and a 6-D state. Standard LIBERO exposes
+# two cameras and an 8-D state, which match this HuggingFaceVLA revision's
 # `image`, `image2`, and 8-D state inputs.
 POLICY="${POLICY:-HuggingFaceVLA/smolvla_libero}"
 EPISODES="${EPISODES:-10}"
