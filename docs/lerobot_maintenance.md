@@ -20,4 +20,4 @@ Record the selected upstream commit and environment versions with experiment res
 Model caches, environments, local `.libero/` configuration and outputs are not source.
 
 Conversion deliberately excluded pre-existing uncommitted evaluation changes and
-`run_libero10_smolvla.sh`; they remain local until explicitly committed.
+the evaluation launcher. These inputs were captured in baseline commit `f19a925b`; the launcher now lives in `experiments/libero/`.

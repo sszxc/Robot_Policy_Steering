@@ -2,13 +2,17 @@
 # Smoke test: set TASK_IDS='[0]' and EPISODES=1.
 # Standard LIBERO-10 protocol: leave TASK_IDS unset and use EPISODES=10.
 set -euo pipefail
+THESIS_REPO_ROOT="${THESIS_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+export THESIS_REPO_ROOT
+export PYTHONPATH="$THESIS_REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+cd "$THESIS_REPO_ROOT"
 
 export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
-# Keep LIBERO's one-time path configuration inside this checkout rather than ~/.libero.
-export LIBERO_CONFIG_PATH="${LIBERO_CONFIG_PATH:-$PWD/.libero}"
+# Keep generated LIBERO configuration with runtime outputs.
+export LIBERO_CONFIG_PATH="${LIBERO_CONFIG_PATH:-$(python -c 'from platforms.paths import output_path; print(output_path("config/libero"))')}"
 
 if [[ ! -f "$LIBERO_CONFIG_PATH/config.yaml" ]]; then
   mkdir -p "$LIBERO_CONFIG_PATH"
@@ -22,10 +26,13 @@ fi
 POLICY="${POLICY:-HuggingFaceVLA/smolvla_libero}"
 EPISODES="${EPISODES:-10}"
 TASK_IDS="${TASK_IDS:-}"
-OUTPUT_DIR="${OUTPUT_DIR:-outputs/libero10_smolvla}"
+RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
+OUTPUT_DIR="${OUTPUT_DIR:-$(python -c 'from platforms.paths import output_path; print(output_path())')/libero10-smolvla-$RUN_ID}"
+SEED="${SEED:-1000}"
 EPISODE_LENGTH="${EPISODE_LENGTH:-}"
 
 args=(
+  --seed="$SEED"
   --policy.path="$POLICY"
   --policy.device=cuda
   --env.type=libero
@@ -45,4 +52,12 @@ if [[ -n "$EPISODE_LENGTH" ]]; then
   args+=(--env.episode_length="$EPISODE_LENGTH")
 fi
 
+provenance_args=(
+  --output-dir "$OUTPUT_DIR" --policy "$POLICY" --episodes "$EPISODES"
+  --task-ids "$TASK_IDS" --seed "$SEED" --episode-length "$EPISODE_LENGTH"
+)
+if [[ -n "${MODEL_PATHS_MANIFEST:-}" ]]; then
+  provenance_args+=(--model-paths "$MODEL_PATHS_MANIFEST")
+fi
+python -m research.evaluation.provenance "${provenance_args[@]}"
 lerobot-eval "${args[@]}"

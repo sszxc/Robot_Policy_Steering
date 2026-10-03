@@ -15,10 +15,11 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
+source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 module purge
 module load mamba/latest
-source activate /scratch/xzhan742/thesis/envs/smolvla-libero-py312-v3
-ROOT=/scratch/xzhan742/thesis
+source activate "$THESIS_PYTHON_ENV"
+ROOT="$THESIS_DATA_ROOT"
 export HF_HOME="$ROOT/cache/huggingface"
 export LIBERO_CONFIG_PATH="$ROOT/config/libero"
 export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
@@ -28,13 +29,14 @@ mkdir -p "$ASSETS" "$ROOT/manifests"
 python - <<'PY'
 import json
 from pathlib import Path
+import os
 from huggingface_hub import snapshot_download
-baseline = json.loads(Path('hpc/smolvla_libero/local-baseline.json').read_text())
+baseline = json.loads(Path('experiments/libero/baselines/local-baseline.json').read_text())
 assets = baseline['assets']
 path = snapshot_download(
     repo_id=assets['repo'], repo_type=assets['repo_type'],
     revision=assets['revision'],
-    local_dir='/scratch/xzhan742/thesis/cache/libero/assets',
+    local_dir=str(Path(os.environ['THESIS_DATA_ROOT']) / 'cache/libero/assets'),
 )
 required = ('articulated_objects', 'stable_scanned_objects', 'turbosquid_objects',
             'stable_hope_objects', 'scenes')
@@ -55,8 +57,9 @@ if [[ ! -f "$LIBERO_CONFIG_PATH/config.yaml" ]]; then
 fi
 python - <<'PY'
 from pathlib import Path
+import os
 import libero.libero
 from libero.libero import get_assets_path
-assert Path(get_assets_path()).resolve() == Path('/scratch/xzhan742/thesis/cache/libero/assets')
+assert Path(get_assets_path()).resolve() == (Path(os.environ['THESIS_DATA_ROOT']) / 'cache/libero/assets')
 print('LIBERO asset resolution OK')
 PY

@@ -121,6 +121,7 @@ def search(iters=80, pop=256, elite=24, seed=0):
     rng = np.random.default_rng(seed)
     mu, sd = (LOW + HIGH) / 2, (HIGH - LOW) / 3
     best, best_s = None, -np.inf
+    output_path("baoding").mkdir(parents=True, exist_ok=True)
     with Pool(16) as pool:
         for it in range(iters):
             X = np.clip(mu + sd * rng.standard_normal((pop, len(mu))), LOW, HIGH)

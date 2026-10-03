@@ -1,0 +1,5 @@
+{
+  "data_root": "data",
+  "output_root": "out",
+  "ur5_ip": "192.168.1.132"
+}

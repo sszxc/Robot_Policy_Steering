@@ -92,7 +92,7 @@ def add_table(spec, pos=(0.55, 0, 0), size=(0.3, 0.4), height=0.4):
 
 
 def add_object(spec, xml, pos, quat=(1, 0, 0, 0), prefix=""):
-    """Attach the first top-level body of an MJCF file (e.g. mujoco/objects/cube.xml) at pos/quat."""
+    """Attach the first top-level body of an MJCF file (e.g. assets/mujoco/objects/cube.xml) at pos/quat."""
     child = mujoco.MjSpec.from_file(str(MJ / "objects" / xml) if "/" not in str(xml) else str(xml))
     frame = spec.worldbody.add_frame(pos=list(pos), quat=list(quat))
     return frame.attach_body(child.worldbody.first_body(), prefix, "")

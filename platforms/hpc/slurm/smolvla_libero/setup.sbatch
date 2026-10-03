@@ -15,11 +15,12 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
+source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 module purge
 module load mamba/latest
 
-ROOT=/scratch/xzhan742/thesis
-ENV_PREFIX="$ROOT/envs/smolvla-libero-py312-v3"
+ROOT="$THESIS_DATA_ROOT"
+ENV_PREFIX="$THESIS_PYTHON_ENV"
 export CONDA_PKGS_DIRS="$ROOT/cache/mamba"
 export PIP_CACHE_DIR="$ROOT/cache/pip"
 export HF_HOME="$ROOT/cache/huggingface"
@@ -40,12 +41,13 @@ mamba create --yes --override-channels -c conda-forge -p "$ENV_PREFIX" \
   python=3.12.14 pip 'ffmpeg=8.*' libstdcxx libgcc
 source activate "$ENV_PREFIX"
 
-CONSTRAINTS="$PWD/hpc/smolvla_libero/local-constraints.txt"
+CONSTRAINTS="$PWD/platforms/environments/smolvla_libero/local-constraints.txt"
 python -m pip install --constraint "$CONSTRAINTS" \
   --index-url https://pypi.org/simple \
   --extra-index-url https://download.pytorch.org/whl/cu130 \
   'torch==2.11.0+cu130' 'torchvision==0.26.0+cu130'
 python -m pip install --constraint "$CONSTRAINTS" --editable './lerobot[smolvla,libero]'
+python -m pip install --no-build-isolation --no-deps --editable .
 python -m pip check
 python - <<'PY'
 import av
@@ -58,14 +60,15 @@ PY
 python - <<'PY'
 import json
 from pathlib import Path
+import os
 from huggingface_hub import snapshot_download
-baseline = json.loads(Path('hpc/smolvla_libero/local-baseline.json').read_text())
+baseline = json.loads(Path('experiments/libero/baselines/local-baseline.json').read_text())
 downloaded = {}
 for key in ('policy', 'backbone'):
     model = baseline[key]
     assert model['revision'], f'Missing revision: {key}'
     downloaded[key] = snapshot_download(repo_id=model['repo'], revision=model['revision'])
-Path('/scratch/xzhan742/thesis/manifests/model-paths.json').write_text(
+(Path(os.environ['THESIS_DATA_ROOT']) / 'manifests/model-paths.json').write_text(
     json.dumps(downloaded, indent=2) + '\n'
 )
 PY

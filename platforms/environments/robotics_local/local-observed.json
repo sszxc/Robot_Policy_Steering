@@ -1,0 +1,13 @@
+{
+  "python": "3.13.12 | packaged by conda-forge | (main, Feb  5 2026, 05:53:46) [GCC 14.3.0]",
+  "executable": "/home/lab/miniforge3/bin/python",
+  "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "packages": {
+    "numpy": "2.4.4",
+    "mujoco": "3.7.0",
+    "pynput": "1.8.2",
+    "ur-rtde": "1.6.5",
+    "leap": "0.0.1"
+  },
+  "note": "Observed environment, not an installation lock; null means distribution not found."
+}

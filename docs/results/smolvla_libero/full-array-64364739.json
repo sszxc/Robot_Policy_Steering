@@ -1,0 +1,112 @@
+{
+  "array_job_id": "64364739",
+  "suite": "libero_10",
+  "episodes_per_task": 10,
+  "seed": 1000,
+  "tasks": [
+    {
+      "task_id": 0,
+      "task_description": "put both the alphabet soup and the tomato sauce in the basket",
+      "n_episodes": 10,
+      "n_success": 0,
+      "pc_success": 0.0,
+      "eval_s": 2338.530261516571,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task0-64364739_0"
+    },
+    {
+      "task_id": 1,
+      "task_description": "put both the cream cheese box and the butter in the basket",
+      "n_episodes": 10,
+      "n_success": 3,
+      "pc_success": 30.0,
+      "eval_s": 2136.7568957805634,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task1-64364739_1"
+    },
+    {
+      "task_id": 2,
+      "task_description": "turn on the stove and put the moka pot on it",
+      "n_episodes": 10,
+      "n_success": 2,
+      "pc_success": 20.0,
+      "eval_s": 2050.1750798225403,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task2-64364739_2"
+    },
+    {
+      "task_id": 3,
+      "task_description": "put the black bowl in the bottom drawer of the cabinet and close it",
+      "n_episodes": 10,
+      "n_success": 7,
+      "pc_success": 70.0,
+      "eval_s": 1513.2800824642181,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task3-64364739_3"
+    },
+    {
+      "task_id": 4,
+      "task_description": "put the white mug on the left plate and put the yellow and white mug on the right plate",
+      "n_episodes": 10,
+      "n_success": 0,
+      "pc_success": 0.0,
+      "eval_s": 2339.742448091507,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task4-64364739_4"
+    },
+    {
+      "task_id": 5,
+      "task_description": "pick up the book and place it in the back compartment of the caddy",
+      "n_episodes": 10,
+      "n_success": 6,
+      "pc_success": 60.0,
+      "eval_s": 1529.2802164554596,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task5-64364739_5"
+    },
+    {
+      "task_id": 6,
+      "task_description": "put the white mug on the plate and put the chocolate pudding to the right of the plate",
+      "n_episodes": 10,
+      "n_success": 4,
+      "pc_success": 40.0,
+      "eval_s": 1901.8978037834167,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task6-64364739_6"
+    },
+    {
+      "task_id": 7,
+      "task_description": "put both the alphabet soup and the cream cheese box in the basket",
+      "n_episodes": 10,
+      "n_success": 3,
+      "pc_success": 30.0,
+      "eval_s": 2083.907645702362,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task7-64364739_7"
+    },
+    {
+      "task_id": 8,
+      "task_description": "put both moka pots on the stove",
+      "n_episodes": 10,
+      "n_success": 1,
+      "pc_success": 10.0,
+      "eval_s": 2387.1479318141937,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task8-64364739_8"
+    },
+    {
+      "task_id": 9,
+      "task_description": "put the yellow and white mug in the microwave and close it",
+      "n_episodes": 10,
+      "n_success": 5,
+      "pc_success": 50.0,
+      "eval_s": 1907.0406892299652,
+      "verified_videos": 10,
+      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task9-64364739_9"
+    }
+  ],
+  "n_episodes": 100,
+  "n_success": 31,
+  "pc_success": 31.0,
+  "verified_videos": 100
+}

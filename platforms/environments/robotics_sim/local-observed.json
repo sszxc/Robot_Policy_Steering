@@ -1,0 +1,16 @@
+{
+  "python": "3.13.12 | packaged by conda-forge | (main, Feb  5 2026, 05:53:46) [GCC 14.3.0]",
+  "executable": "/home/lab/miniforge3/bin/python",
+  "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "packages": {
+    "mujoco": "3.7.0",
+    "numpy": "2.4.4",
+    "jax": "0.11.2",
+    "jaxlib": "0.11.2",
+    "brax": "0.14.2",
+    "jaxopt": "0.8.5",
+    "pytest": "9.1.1",
+    "scipy": "1.17.1"
+  },
+  "note": "Observed environment, not an installation lock; null means distribution not found."
+}

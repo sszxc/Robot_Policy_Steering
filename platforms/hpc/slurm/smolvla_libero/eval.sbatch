@@ -16,6 +16,7 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
+source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 MODE="${1:-smoke}"
 case "$MODE" in
   smoke) export TASK_IDS='[0]' EPISODES=1; EXPECTED_EPISODES=1 ;;
@@ -31,8 +32,8 @@ esac
 
 module purge
 module load mamba/latest
-source activate /scratch/xzhan742/thesis/envs/smolvla-libero-py312-v3
-ROOT=/scratch/xzhan742/thesis
+source activate "$THESIS_PYTHON_ENV"
+ROOT="$THESIS_DATA_ROOT"
 export HF_HOME="$ROOT/cache/huggingface"
 export PIP_CACHE_DIR="$ROOT/cache/pip"
 export TMPDIR="$ROOT/tmp"
@@ -42,9 +43,9 @@ export MUJOCO_GL=egl PYOPENGL_PLATFORM=egl
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
 export LIBERO_CONFIG_PATH="$ROOT/config/libero"
 if [[ "$MODE" == task ]]; then
-  export OUTPUT_DIR="$ROOT/results/libero10-task${TASK_INDEX}-${SLURM_ARRAY_JOB_ID}_${TASK_INDEX}"
+  export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/libero10-task${TASK_INDEX}-${SLURM_ARRAY_JOB_ID}_${TASK_INDEX}"
 else
-  export OUTPUT_DIR="$ROOT/results/libero10-${MODE}-${SLURM_JOB_ID}"
+  export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/libero10-${MODE}-${SLURM_JOB_ID}"
 fi
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
 mkdir -p "$TMPDIR" "$ROOT/manifests"
@@ -55,12 +56,11 @@ fi
 hostname
 nvidia-smi
 git rev-parse HEAD
-python hpc/smolvla_libero/prepare_policy.py
+python -m research.policies.prepare_policy
 export POLICY="$ROOT/models/smolvla-libero-local"
+export MODEL_PATHS_MANIFEST="$ROOT/manifests/model-paths.json"
 
 # This preflight uses its own process, so EGL state cannot leak into rollout workers.
-python hpc/smolvla_libero/gpu_preflight.py
-cd lerobot
-bash run_libero10_smolvla.sh
-cd ..
-python hpc/smolvla_libero/verify_eval.py "$OUTPUT_DIR" "$EXPECTED_EPISODES"
+python platforms/hpc/checks/gpu_preflight.py
+bash experiments/libero/run_libero10_smolvla.sh
+python -m research.evaluation.verify_eval "$OUTPUT_DIR" "$EXPECTED_EPISODES"

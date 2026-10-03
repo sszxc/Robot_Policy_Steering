@@ -1,6 +1,6 @@
 # SmolVLA / LIBERO evaluation on ASU Sol
 
-This directory records the migration of the local SmolVLA/LIBERO evaluation
+This document records the migration of the local SmolVLA/LIBERO evaluation
 environment to ASU Sol. The user authorized installation, GPU validation and
 full evaluation without separate approvals. Code remains in
 `/home/xzhan742/Coding/thesis`, and environments, caches, models, results and
@@ -15,7 +15,7 @@ logs live under `/scratch/xzhan742/thesis`.
 - Local and remote Git HEAD at setup: `d0a334bce457868332f3ed1d4aa5a7ccc3031c35`.
 - Local reference: 100 episodes, 39 successes (39%), 9667.86 seconds.
 - Local installed package versions and exact Hub model revisions are recorded
-  in `local-baseline.json`. `local-constraints.txt` limits the HPC Python
+  in [`local-baseline.json`](../../experiments/libero/baselines/local-baseline.json). [`local-constraints.txt`](../../platforms/environments/smolvla_libero/local-constraints.txt) limits the HPC Python
   resolver to these versions for the `[smolvla,libero]` dependency graph.
 - Sol has x86_64 Rocky Linux 8.10 with glibc 2.28; account `grp_hbenamor`,
   QoS `public`, `htc` full A100. System module: `mamba/latest`.
@@ -41,8 +41,8 @@ because torchcodec 0.11.1 ships libraries for FFmpeg major versions 4 through
 8. Earlier setup environments are retained for diagnosis and are not used by
 evaluation. All Python package pins remain unchanged.
 
-The GPU job (`eval.sbatch`) runs `bash run_libero10_smolvla.sh` from the remote
-LeRobot checkout, with the pinned model snapshots resolved locally and all
+The GPU job (`platforms/hpc/slurm/smolvla_libero/eval.sbatch`) runs
+`bash experiments/libero/run_libero10_smolvla.sh` from the repository root, with the pinned model snapshots resolved locally and all
 runtime data sent to scratch. `smoke` uses `TASK_IDS='[0]' EPISODES=1`. The
 `array.sbatch` job calls task mode with 10 episodes for each task ID 0–9, at most
 two concurrent A100 tasks. The smoke job's single episode required about 304
@@ -75,10 +75,19 @@ reference run had 39 successes (39%). This is one run on each machine, so the
 8-point difference does not by itself establish a software or policy mismatch.
 All 10 task jobs and the merge job exited 0. Each task wrote metrics for 10
 episodes and 10 decodable MP4 videos. The local backup contains the
-[summary](results/full-array-64364739.json), [Slurm states](results/slurm-64364739.txt),
-[environment manifests](results/environment-64324198.tar.gz),
-[smoke metrics](results/smoke-64361608.json), and a
-[sample smoke video](results/smoke-64361608.mp4). All raw videos remain on
+[summary](smolvla_libero/full-array-64364739.json), Slurm states (`out/archive/smolvla_libero/slurm-64364739.txt`),
+environment manifests (`out/archive/smolvla_libero/environment-64324198.tar.gz`),
+[smoke metrics](smolvla_libero/smoke-64361608.json), and a
+sample smoke video (`out/archive/smolvla_libero/smoke-64361608.mp4`). All raw videos remain on
 scratch under the task output paths listed in the summary. The data transfer
 node connection timed out from this machine; these small artifacts were copied
 through the login connection.
+
+## Architecture migration
+
+Source inputs were recorded in commit `f19a925b`. Both machines started at
+`d0a334bc`; HPC scripts and Python tools matched byte for byte. The remote README
+contained earlier queue statuses, while the local document contained completed
+results; this document retains the newer verified results. The original remote
+README is preserved in `.local-backups/architecture-20261002/untracked-before.tar.gz`
+on HPC. Raw local artifacts moved to ignored `out/archive/smolvla_libero/`.

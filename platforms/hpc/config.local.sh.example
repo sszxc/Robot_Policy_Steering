@@ -1,0 +1,5 @@
+# Copy to config.local.sh (ignored by Git) to override compute-node runtime paths.
+# Slurm header paths/resources are independent: override them with sbatch flags.
+# export THESIS_DATA_ROOT=/scratch/xzhan742/thesis
+# export THESIS_OUTPUT_ROOT=/scratch/xzhan742/thesis/results
+# export THESIS_PYTHON_ENV=/scratch/xzhan742/thesis/envs/smolvla-libero-py312-v3
