@@ -85,4 +85,4 @@ sbatch platforms/hpc/slurm/smolvla_libero/aggregate.sbatch ARRAY_JOB_ID
 
 ## 早期平台检查记录
 
-2026-10-01：纯密钥 SSH、account/QoS 查询、分区/GRES 查询、`mamba/latest` 可见性已验证。A100 测试任务 `64301454` 在 `sg019` 运行 7 秒，`COMPLETED / 0:0`。当前登录 shell 无 `myquota` 命令。环境安装、LIBERO/EGL 和传输节点尚未验证。
+2026-10-01：纯密钥 SSH、account/QoS 查询、分区/GRES 查询、`mamba/latest` 可见性已验证。A100 测试任务 `64301454` 在 `sg019` 运行 7 秒，`COMPLETED / 0:0`。当时登录 shell 无 `myquota` 命令。后续环境安装和 LIBERO/EGL 结果见 [基线记录](results/smolvla_libero_baseline.md)；架构迁移验证见 [迁移记录](provenance/architecture-migration.md)。传输节点连接此前超时。

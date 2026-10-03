@@ -33,4 +33,28 @@ baseline commit `f19a925b`. Robotics reorganization is commit `bf1bbf45`.
   GPU training throughput was not validated by that smoke.
 - All seven project shell entrypoints passed `bash -n`.
 
-HPC validation is recorded below after synchronization and compute-node checks.
+## HPC validation
+
+The same source commit `cf044f6a` was installed on HPC through a Git bundle and
+fast-forward merge. Original untracked files were moved into
+`.local-backups/architecture-20261002/hpc-original/` and `0-original` after backup.
+All five Slurm scripts passed `sbatch --test-only` with current cluster settings.
+
+CPU compute-node check `64391677` completed with exit code `0:0` in 50 seconds.
+It installed the root project editable without dependencies and re-aggregated
+array `64364739` into a new output directory. The result matches the stored
+baseline: 100 episodes, 31 successes, 100 verified videos. The original summary
+was retained. New aggregation output:
+`/scratch/xzhan742/thesis/results/architecture-aggregate-64391677/summary.json`.
+
+GPU smoke job `64391678` completed with exit code `0:0` on `sg036` in 12m11s.
+CUDA execution and nonblank EGL rendering passed on an NVIDIA A100-SXM4-80GB.
+The migrated launcher loaded the pinned model offline, evaluated one episode in
+295.40 seconds, produced one video and passed video decoding/result verification.
+This episode had zero successes; the check validates execution, not policy quality.
+Its provenance records commit `cf044f6a` with `dirty: false` and the same seed 1000.
+
+The [curated validation summary](../results/smolvla_libero/architecture-smoke-64391678.json)
+records job states, input/model hashes, package versions and artifact locations.
+Full outputs remain in
+`/scratch/xzhan742/thesis/results/libero10-smoke-64391678/`.

@@ -1,6 +1,6 @@
 # Usage
 
-Install the project editable (`python -m pip install --no-build-isolation --no-deps -e .`). Commands can then run from any directory; default outputs are resolved from the repository root or `THESIS_OUTPUT_ROOT`. Explicit relative output/checkpoint paths remain relative to the current directory. Headless video needs `MUJOCO_GL=egl`. `view.py` and `--viewer` need a display, so leave that variable unset.
+Install the project editable (`python -m pip install --no-build-isolation --no-deps -e .`). Commands can then run from any directory; default outputs are resolved from the repository root or `THESIS_OUTPUT_ROOT`. Explicit relative output/checkpoint paths remain relative to the current directory. Headless video needs `MUJOCO_GL=egl`. `robotics.sim.view` and `--viewer` need a display, so leave that variable unset.
 
 ## View a scene
 
@@ -99,3 +99,34 @@ python -m robotics.teleop.replay out/teleop/<file>.npz [--speed 1.0] [--loop] [-
 | `robotics.teleop.replay` | `space` pause, `q` quit | Re-runs the current `robotics/teleop/mapping.py` on the raw keypoints. `--fix_wrist` keeps the wrist at home |
 
 Joint mapping gains/offsets: `GAIN` / `OFFSET` in `robotics/teleop/mapping.py`.
+
+## UR5 hardware examples
+
+Use the laptop environment with `ur_rtde`. Importing these modules does not
+connect to the robot; executing their entrypoints connects to the selected IP.
+`--help` works without the device dependency.
+
+```bash
+python -m robotics.hardware.ur5.ur5_read --ip 192.168.1.132
+python -m robotics.hardware.ur5.ur5_move --ip 192.168.1.132
+python -m robotics.hardware.ur5.ur5_move_servo --ip 192.168.1.132
+```
+
+`ur5_read` prints joint/TCP state. `ur5_move` executes the existing TCP circle
+and returns to its starting pose. `ur5_move_servo` executes the existing joint
+sine cycle using the UR5 CB3 example's 125 Hz period. Choose the device address
+with `--ip`, `THESIS_UR5_IP`, or `platforms/local/config.local.json`.
+
+## SmolVLA / LIBERO
+
+Select the SmolVLA/LIBERO environment with editable LeRobot installed, then:
+
+```bash
+TASK_IDS='[0]' EPISODES=1 bash experiments/libero/run_libero10_smolvla.sh
+```
+
+The launcher retains LIBERO-10 relative actions and seed 1000 by default.
+`POLICY`, `TASK_IDS`, `EPISODES`, `SEED`, `EPISODE_LENGTH`, and `OUTPUT_DIR` can
+override the run inputs. Default results receive a new directory under `out/`;
+an explicitly selected directory must also be new. Each run records provenance.
+For HPC submission use [the quick reference](ASU_Sol_HPC_quick.md).

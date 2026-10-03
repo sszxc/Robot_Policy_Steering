@@ -1,0 +1,69 @@
+{
+  "smoke_job_id": "64391678",
+  "environment_job_id": "64391677",
+  "slurm_states": [
+    "64391677|COMPLETED|0:0|00:00:50|sc002",
+    "64391678|COMPLETED|0:0|00:12:11|sg036"
+  ],
+  "verification": {
+    "avg_sum_reward": 0,
+    "avg_max_reward": 0,
+    "pc_success": 0,
+    "n_episodes": 1,
+    "n_success": 0,
+    "pc_success_ci95": [
+      0,
+      79.34506856227625
+    ],
+    "eval_s": 295.4028980731964,
+    "eval_ep_s": 295.40289878845215,
+    "verified_videos": 1
+  },
+  "commit": "cf044f6ac475b3d62999884dc94e77f62d83e3bb",
+  "dirty": false,
+  "timestamp_utc": "2026-10-03T00:36:54.052957+00:00",
+  "config": {
+    "suite": "libero_10",
+    "control_mode": "relative",
+    "batch_size": 1,
+    "policy": "/scratch/xzhan742/thesis/models/smolvla-libero-local",
+    "episodes_per_task": 1,
+    "task_ids": [
+      0
+    ],
+    "seed": 1000,
+    "episode_length": null,
+    "output_dir": "/scratch/xzhan742/thesis/results/libero10-smoke-64391678"
+  },
+  "packages": {
+    "torch": "2.11.0+cu130",
+    "mujoco": "3.8.1",
+    "hf-libero": "0.1.4",
+    "lerobot": "0.6.2",
+    "transformers": "5.5.4"
+  },
+  "model_paths": {
+    "policy": "/scratch/xzhan742/thesis/cache/huggingface/hub/models--HuggingFaceVLA--smolvla_libero/snapshots/6721902bc4d61e50a3bfdb11dfb4cb626f05d102",
+    "backbone": "/scratch/xzhan742/thesis/cache/huggingface/hub/models--HuggingFaceTB--SmolVLM2-500M-Instruct/snapshots/7b375e1b73b11138ff12fe22c8f2822d8fe03467"
+  },
+  "policy_config_sha256": "6936227ce3f1b5d11ff01e0ab9de71187795179540bb01a32ad521a35f87b18d",
+  "reference_baseline_sha256": "05baa28d35fb920a051eda0f36aa7b5395e9fe70446b50145ad68fffda723c01",
+  "preflight": {
+    "job_id": "64391678",
+    "hostname": "sg036",
+    "torch": "2.11.0+cu130",
+    "cuda_runtime": "13.0",
+    "gpu": "NVIDIA A100-SXM4-80GB",
+    "cuda_visible_devices": "0",
+    "egl_device_id": "0",
+    "gl_renderer": "unavailable",
+    "mujoco": "3.8.1",
+    "torchcodec": "0.11.1+cpu",
+    "av": "15.1.0"
+  },
+  "artifacts": {
+    "run_directory": "/scratch/xzhan742/thesis/results/libero10-smoke-64391678",
+    "full_provenance": "/scratch/xzhan742/thesis/results/libero10-smoke-64391678/provenance.json",
+    "old_baseline_reaggregation": "/scratch/xzhan742/thesis/results/architecture-aggregate-64391677/summary.json"
+  }
+}
