@@ -1,0 +1,130 @@
+"""MJX env: palm-up HX5 hand holds a free Rubik's cube and turns its top layer by quarter turns (brax Env API).
+
+Same pattern as rl/cube_env.py. The scripted version (tasks/rubik.py) needs a table fixture; this is the in-hand one.
+"""
+import jax
+import jax.numpy as jnp
+import mujoco
+import numpy as np
+from brax.envs.base import Env, State
+from mujoco import mjx
+
+from robotics.policies.rl.cube_env import quat_angle
+from robotics.sim import hand as H, scene
+from robotics.policies.scripted.rubik import DETENT, EDGE, add_rubik
+
+HAND_POS = (0.0, 0.0, 0.3)
+CUBE_START = np.array([0.075, 0.0, 0.3 + 0.021 + EDGE / 2 + 0.001])  # resting on the palm
+DEFAULT_POSE = H.pose(thumb=(0.6, -0.6, 0.4, 0.3), index=(0, 0.4, 0.3, 0.2), middle=(0, 0.4, 0.3, 0.2),
+                      ring=(0, 0.4, 0.3, 0.2), pinky=(0, 0.4, 0.3, 0.2))
+QUARTER = jnp.pi / 2
+ASSIST_KP, ASSIST_KD, ASSIST_KR, ASSIST_KDR = 200.0, 3.0, 0.5, 0.005  # full-strength virtual fixture (N/m, Ns/m, Nm/rad, Nms/rad)
+# qpos: hand 0:20, cube free joint 20:27, top-layer hinge 27; qvel: hand 0:20, cube 20:26, hinge 26
+
+
+def build_model(sim_dt=0.005, stickers=False):
+    """Hand-only palm-up scene + free Rubik's cube; only hand<->cube contacts plus explicit hand self-collision pairs.
+    Stickers (~130 visual geoms) are only needed for rendering."""
+    spec = scene.hand_only(pos=HAND_POS)
+    add_rubik(spec, CUBE_START, stickers=stickers)
+    scene.add_hand_self_pairs(spec)
+    m = spec.compile()
+    # Only hand<->cube contacts; the top layer skips the hand's boxes (palm, knuckles): box-box is slow in MJX.
+    for g in range(m.ngeom):
+        if m.geom_contype[g] or m.geom_conaffinity[g]:
+            body = m.body(m.geom_bodyid[g]).name
+            if body.startswith("rubik"):
+                m.geom_contype[g], m.geom_conaffinity[g] = (2 if body == "rubik_top" else 1), 0
+            elif body == "world":
+                m.geom_contype[g], m.geom_conaffinity[g] = 0, 0
+            else:
+                m.geom_contype[g], m.geom_conaffinity[g] = 0, 1 if m.geom_type[g] == mujoco.mjtGeom.mjGEOM_BOX else 3
+    m.opt.timestep = sim_dt
+    m.opt.iterations, m.opt.ls_iterations = 5, 8
+    m.opt.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
+    return m
+
+
+def observe(qpos, qvel, ctrl, target):
+    """Privileged obs; works on jnp or np arrays."""
+    err = qpos[27] - target
+    return jnp.concatenate([qpos[:20], 0.1 * qvel[:20], ctrl, (qpos[20:23] - CUBE_START) * 10, qpos[23:27],
+                            qvel[20:23], 0.2 * qvel[23:26], jnp.array([jnp.sin(err), jnp.cos(err), 0.2 * qvel[26]])])
+
+
+class RubikEnv(Env):
+    def __init__(self, ctrl_dt=0.05, sim_dt=0.005, action_scale=0.15, success_tol=np.radians(10), assist_prob=0.0,
+                 w_vel=0.0, w_prog=20.0, detent=DETENT):
+        # assist_prob: fraction of episodes where a spring fixture (random strength) holds the lower body; w_vel: anti-fling
+        self.mj_model = build_model(sim_dt)
+        self.mjx_model = mjx.put_model(self.mj_model)
+        self.n_frames = int(round(ctrl_dt / sim_dt))
+        self.action_scale, self.success_tol = action_scale, success_tol
+        self.assist_prob, self.w_vel, self.w_prog, self.detent = assist_prob, w_vel, w_prog, detent
+        self.lo, self.hi = jnp.array(self.mj_model.actuator_ctrlrange.T)
+
+    @property
+    def observation_size(self):
+        return 20 * 3 + 3 + 4 + 6 + 3
+
+    @property
+    def action_size(self):
+        return 20
+
+    @property
+    def backend(self):
+        return "mjx"
+
+    def reset(self, rng):
+        r1, r2, r3, r4, r5 = jax.random.split(rng, 5)
+        hand_q = jnp.clip(DEFAULT_POSE + 0.05 * jax.random.normal(r1, (20,)), self.lo, self.hi)
+        cube_pos = CUBE_START + jnp.array([0.005, 0.005, 0.0]) * jax.random.normal(r2, (3,))
+        qpos = jnp.concatenate([hand_q, cube_pos, jnp.array([1.0, 0, 0, 0, 0])])
+        data = mjx.make_data(self.mjx_model).replace(qpos=qpos, ctrl=hand_q)
+        data = mjx.forward(self.mjx_model, data)
+        sign = jnp.where(jax.random.bernoulli(r3), 1.0, -1.0)  # turn direction for this episode
+        target = sign * QUARTER
+        assist = jax.random.bernoulli(r4, self.assist_prob) * jax.random.uniform(r5)
+        info = {"rng": rng, "sign": sign, "target": target, "successes": jnp.zeros(()), "assist": assist,
+                "last_err": jnp.abs(target)}
+        obs = observe(data.qpos, data.qvel, data.ctrl, target)
+        metrics = {"successes": jnp.zeros(()), "layer_err": jnp.zeros(()), "dropped": jnp.zeros(()),
+                   "cube_rot": jnp.zeros(())}
+        return State(data, obs, jnp.zeros(()), jnp.zeros(()), metrics, info)
+
+    def _physics(self, data, assist):
+        def one(_, d):  # 4-fold detent on the hinge (like tasks/rubik.add_detent) + optional spring fixture on the cube
+            rot = 2 * jnp.sign(d.qpos[23] + 1e-9) * d.qpos[24:27]  # small-angle rotvec vs identity
+            fix = jnp.concatenate([-ASSIST_KP * (d.qpos[20:23] - CUBE_START) - ASSIST_KD * d.qvel[20:23],
+                                   -ASSIST_KR * rot - ASSIST_KDR * d.qvel[23:26]])
+            f = d.qfrc_applied.at[26].set(-self.detent * jnp.sin(4 * d.qpos[27])).at[20:26].set(assist * fix)
+            return mjx.step(self.mjx_model, d.replace(qfrc_applied=f))
+        return jax.lax.fori_loop(0, self.n_frames, one, data)
+
+    def step(self, state, action):
+        data = state.pipeline_state
+        ctrl = jnp.clip(data.ctrl + self.action_scale * action, self.lo, self.hi)
+        data = self._physics(data.replace(ctrl=ctrl), state.info["assist"])
+
+        target = state.info["target"]
+        err = jnp.abs(data.qpos[27] - target)
+        dist = jnp.linalg.norm(data.qpos[20:23] - CUBE_START)
+        cube_rot = quat_angle(data.qpos[23:27], jnp.array([1.0, 0, 0, 0]))  # lower body vs start
+        dropped = (dist > 0.1) | (data.qpos[22] < CUBE_START[2] - 0.04)
+        success = (err < self.success_tol) & (jnp.abs(data.qvel[26]) < 1.0)
+
+        # reward: layer progress toward target, keep the cube still in the palm, success bonus, drop penalty
+        reward = (self.w_prog * (state.info["last_err"] - err) + 0.5 / (err + 0.1) - 10.0 * dist - 0.5 * cube_rot
+                  - 0.001 * jnp.sum(action ** 2) + 100.0 * success - 100.0 * dropped
+                  - self.w_vel * jnp.linalg.norm(data.qvel[20:23]))
+
+        target = jnp.where(success, target + state.info["sign"] * QUARTER, target)
+        info = {**state.info, "target": target, "successes": state.info["successes"] + success,
+                "last_err": jnp.abs(data.qpos[27] - target)}
+        metrics = {**state.metrics, "successes": success.astype(jnp.float32), "layer_err": err,
+                   "dropped": dropped.astype(jnp.float32), "cube_rot": cube_rot}
+        nan = jnp.isnan(data.qpos).any() | jnp.isnan(data.qvel).any()
+        done = (dropped | nan).astype(jnp.float32)
+        obs = observe(data.qpos, data.qvel, data.ctrl, target)
+        return state.replace(pipeline_state=data, obs=obs, reward=jnp.where(nan, 0.0, reward), done=done,
+                             metrics=metrics, info=info)

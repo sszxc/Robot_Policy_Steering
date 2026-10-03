@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thesis-policy-steering"
+version = "0.1.0"
+description = "Policy control-space research and UR5/HX5 robotics experiments"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["robotics", "robotics.*", "research", "research.*", "platforms"]
+namespaces = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

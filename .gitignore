@@ -15,3 +15,12 @@ __pycache__/
 # Local LIBERO configuration and pre-subtree Git backup.
 /lerobot/.libero/
 /.local-backups/
+
+# Runtime data, project packaging and machine-specific overrides.
+/data/
+*.egg-info/
+/build/
+/dist/
+/platforms/**/config.local.json
+/platforms/hpc/config.local.sh
+/experiments/libero/.libero/
