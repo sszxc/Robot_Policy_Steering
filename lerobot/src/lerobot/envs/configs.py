@@ -329,6 +329,7 @@ class LiberoEnv(EnvConfig):
     render_mode: str = "rgb_array"
     camera_name: str = "agentview_image,robot0_eye_in_hand_image"
     init_states: bool = True
+    init_state_offset: int = 0
     hard_reset: bool = True
     camera_name_mapping: dict[str, str] | None = None
     observation_height: int = 360
@@ -421,6 +422,7 @@ class LiberoEnv(EnvConfig):
             "observation_width": self.observation_width,
             "control_freq": self.fps,
             "hard_reset": self.hard_reset,
+            "init_state_offset": self.init_state_offset,
         }
         if self.task_ids is not None:
             kwargs["task_ids"] = self.task_ids

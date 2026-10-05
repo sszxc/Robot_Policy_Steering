@@ -122,6 +122,7 @@ class LiberoEnv(gym.Env):
         visualization_height: int = 480,
         init_states: bool = True,
         episode_index: int = 0,
+        init_state_offset: int = 0,
         n_envs: int = 1,
         camera_name_mapping: dict[str, str] | None = None,
         num_steps_wait: int = 10,
@@ -131,6 +132,8 @@ class LiberoEnv(gym.Env):
         hard_reset: bool = True,
     ):
         super().__init__()
+        if init_state_offset < 0:
+            raise ValueError("init_state_offset must be nonnegative")
         if control_freq <= 0:
             raise ValueError(f"control_freq must be positive, got {control_freq}")
         if not hard_reset and not init_states:
@@ -162,7 +165,7 @@ class LiberoEnv(gym.Env):
         self.num_steps_wait = num_steps_wait
         self.control_freq = control_freq
         self.hard_reset = hard_reset
-        self.episode_index = episode_index
+        self.episode_index = episode_index + init_state_offset
         self.episode_length = episode_length
         # Load once and keep
         self._init_states = (
