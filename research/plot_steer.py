@@ -1,4 +1,4 @@
-"""Figures for docs/results/smolvla_steer_object.md (z -> FiLM steering on LIBERO-Object).
+"""Figures for docs/results/smolvla_steer_object.html (z -> FiLM steering on LIBERO-Object).
 
 Each figure is skipped with a note if its inputs are missing.
 """
@@ -221,7 +221,7 @@ def fig_plane(O, out):
     ax.set_xticks(range(5), [f"{v:g}" for v in vals])
     ax.set_yticks(range(5), [f"{v:g}" for v in vals])
     ax.set(xlabel="a (coefficient of u0)", ylabel="b (coefficient of u4)",
-           title=f"task 0, random W: success on z = a·u0 + b·u4\n({N.sum()} episodes done; – = not run yet)")
+           title=f"task 0, random W: success on z = a·u0 + b·u4\n({N.sum()} episodes, inits 0–7)")
     fig.colorbar(im, ax=ax, fraction=0.046, label="success rate")
     save(fig, out, "plane_t0.png")
 
@@ -332,29 +332,66 @@ def fig_heldout(O, out):
     save(fig, out, "heldout.png")
 
 
-def fig_traj(O, out):
+PLOTLY_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>body{{margin:0;font-family:system-ui,sans-serif;background:#fcfcfb}} .p{{height:480px}}</style>
+</head><body>{divs}<script>{scripts}</script></body></html>"""
+
+
+def path3d(ep, i, name, color, **kw):
+    """Plotly traces for one episode: eef path (cm) plus an end marker (diamond = success, x = fail)."""
+    xyz = np.round(100 * ep["state"][i, : ep["steps"][i], :3].astype(float), 2)
+    ok = bool(ep["success"][i])
+    line = dict(type="scatter3d", mode="lines", x=xyz[:, 0].tolist(), y=xyz[:, 1].tolist(), z=xyz[:, 2].tolist(),
+                name=f"{name} ({'ok' if ok else 'fail'})", line=dict(color=color, width=5), legendgroup=name, **kw)
+    end = dict(type="scatter3d", mode="markers", x=xyz[-1:, 0].tolist(), y=xyz[-1:, 1].tolist(),
+               z=xyz[-1:, 2].tolist(), showlegend=False,
+               marker=dict(color=color, size=6, symbol="diamond" if ok else "x"), legendgroup=name, **kw)
+    return [line, end]
+
+
+def fig_traj3d(O, out):
+    """Interactive 3D eef paths: t0 line scan along u0 (init 0) and held-out z=0 vs the random-W pick."""
+    figs = []
     ep = load(O / "line-t0-random")
-    if ep is None:
-        return skip("traj_t0.png", "missing line-t0-random")
-    pick = [(0.0, "z=0", COL["zero"]), (-2, "s=−2", "#b22a2a"), (-1, "s=−1", "#ec8f8e"),
-            (1, "s=+1", "#6da7ec"), (2, "s=+2", "#184f95")]
-    fig, ax = plt.subplots(figsize=(4.6, 4))
-    for c, name, col in pick:
-        m = (ep["ep_init"] == 0) & (ep["ep_rep"] == 0)
-        m &= (ep["ep_z"] == 0) if c == 0 else ((ep["dir"] == 0) & (ep["scale"] == c))
-        i = np.flatnonzero(m)
-        if not len(i):
-            continue
-        i = i[0]
-        xy = 100 * ep["state"][i, : ep["steps"][i], :2]
-        ok = bool(ep["success"][i])
-        ax.plot(xy[:, 0], xy[:, 1], color=col, lw=1.6, label=f"{name} ({'success' if ok else 'fail'})")
-        ax.plot(*xy[-1], "*" if ok else "X", ms=11 if ok else 8, color=col, mec=SURF, mew=0.8, zorder=5)
-    ax.plot(*xy[0], "o", ms=7, mfc="white", mec=INK, zorder=6, label="start")
-    ax.set(xlabel="eef x (cm)", ylabel="eef y (cm)", aspect="equal",
-           title="task 0, init 0: top-down eef path, z = s·u0 (random W)")
-    ax.legend(loc="upper left", bbox_to_anchor=(1.02, 1), fontsize=7.5)
-    save(fig, out, "traj_t0.png")
+    if ep is not None:
+        scales = sorted(set(ep["scale"][ep["dir"] == 0]))
+        traces = []
+        for c in [0.0] + scales:
+            m = (ep["ep_init"] == 0) & (ep["ep_rep"] == 0)
+            m &= (ep["ep_z"] == 0) if c == 0 else ((ep["dir"] == 0) & (ep["scale"] == c))
+            i = np.flatnonzero(m)
+            if len(i):
+                cmap = plt.cm.Reds if c < 0 else plt.cm.Blues  # darker = larger |s|, floor keeps it visible
+                col = COL["zero"] if c == 0 else matplotlib.colors.to_hex(cmap(0.35 + 0.65 * abs(c) / 4))
+                traces += path3d(ep, i[0], "z=0" if c == 0 else f"s={c:+g}", col)
+        figs.append(("task 0, init 0: z = s·u0 (random W); red s<0, blue s>0; click legend to toggle", traces, []))
+    v = load(O / "val/t0-random")
+    if v is not None:
+        inits = sorted(set(v["ep_init"]))[:8]
+        traces = []
+        for n, r in enumerate(inits):
+            for row, name, col in ((0, "z=0", COL["zero"]), (1, "random d4, s=+1", COL["random"])):
+                i = np.flatnonzero((v["ep_init"] == r) & (v["ep_rep"] == 0) & (v["ep_z"] == row))
+                if len(i):
+                    traces += path3d(v, i[0], name, col, visible=n == 0)
+        # each init adds 4 traces (line + end marker for z=0 and the pick)
+        per = len(traces) // len(inits)
+        buttons = [dict(label=f"init {r}", method="update",
+                        args=[{"visible": [k // per == n for k in range(len(traces))]}]) for n, r in enumerate(inits)]
+        menus = [dict(buttons=buttons, x=0, y=1.08, xanchor="left", direction="down")]
+        figs.append(("task 0 held-out (Sol, rep 0): z=0 vs grid pick, same flow noise; pick an init", traces, menus))
+    if not figs:
+        return skip("traj_t0_3d.html", "missing line-t0-random and val/t0-random")
+    divs, scripts = "", ""
+    for n, (title, traces, menus) in enumerate(figs):
+        layout = dict(title=dict(text=title, font=dict(size=13)), updatemenus=menus, paper_bgcolor="#fcfcfb",
+                      margin=dict(l=0, r=0, t=60, b=0), legend=dict(font=dict(size=11)),
+                      scene=dict(aspectmode="data", xaxis_title="x (cm)", yaxis_title="y (cm)", zaxis_title="z (cm)"))
+        divs += f'<div id="f{n}" class="p"></div>'
+        scripts += f"Plotly.newPlot('f{n}', {json.dumps(traces)}, {json.dumps(layout)});\n"
+    (out / "traj_t0_3d.html").write_text(PLOTLY_PAGE.format(title="eef paths", divs=divs, scripts=scripts))
+    print("wrote", out / "traj_t0_3d.html")
 
 
 def main():
@@ -365,7 +402,7 @@ def main():
     O, out = Path(a.root), Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     for f in (fig_openloop_dose, fig_grid_success, fig_effect_vs_noise, fig_line, fig_plane,
-              fig_openloop_vs_closedloop, fig_heldout, fig_traj):
+              fig_openloop_vs_closedloop, fig_heldout, fig_traj3d):
         f(O, out)
 
 

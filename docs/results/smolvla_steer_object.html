@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmolVLA FiLM steering</title>
+<style>
+:root { --bg:#fcfcfb; --fg:#1b1b1a; --muted:#5f5e5a; --line:#e4e3df; --code:#f1f0ec; --acc:#2a78d6; }
+@media (prefers-color-scheme: dark) { :root { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; }
+  img { background:#fcfcfb; border-radius:4px; } }
+body { background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  max-width:980px; margin:0 auto; padding:24px 16px 64px; }
+h1 { font-size:1.6em; margin-bottom:.3em; } h2 { font-size:1.2em; margin-top:2em; border-bottom:1px solid var(--line); padding-bottom:.2em; }
+a { color:var(--acc); } code { background:var(--code); padding:1px 4px; border-radius:3px; font-size:.9em; }
+table { border-collapse:collapse; margin:.8em 0; font-size:.9em; display:block; overflow-x:auto; }
+th, td { border:1px solid var(--line); padding:4px 8px; text-align:left; white-space:nowrap; }
+th { background:var(--code); }
+figure { margin:1.2em 0; } figure img { max-width:100%; display:block; }
+figure iframe { width:100%; height:1000px; border:1px solid var(--line); border-radius:4px; background:#fcfcfb; }
+figcaption { color:var(--muted); font-size:.85em; margin-top:.3em; }
+</style></head><body>
+<h1>SmolVLA z → FiLM steering on LIBERO-Object (minimal test)</h1>
+<p>Question: does a low-dim z injected as FiLM on the action expert act like a usable control
+space (effect beyond policy noise, consistent across init states, smooth, reachable gains),
+before any closed-loop optimization of z?</p>
+<p>Setup: <code>HuggingFaceVLA/smolvla_libero</code>, <code>libero_object</code>, <code>expert_film</code> on expert MLP outputs of
+layers 7,15,23,31, d=8, same γ/β for all denoising steps. Two W: <code>random</code> (Gaussian, γ and β,
+α=0.3) and <code>pca</code> (top-8 PCs of each layer's MLP output over 24 default episodes of the same
+task, β only, scaled by √λ, α=3.0). α is matched so the median open-loop |Δa0| at scale 1 is
+≈0.1 (normalized action units) for both. z = scale·u_k, u_k ~ N(0, I8) (z_seed 0, the same 8
+directions for every task and W). Flow-matching noise is seeded per (init, rep), so every z is
+paired with the z=0 episode of the same noise; z=0 reruns are bit-identical across processes.
+The policy replans every step (<code>n_action_steps=1</code>).</p>
+<p>Code: <code>research/{run,openloop,openloop_summary,analyze}.py</code>; HPC <code>platforms/hpc/slurm/steer_{pair,lines}.sbatch</code>.
+Raw outputs: <code>out/libero/smolvla/steer/</code> (local) and Sol <code>results/smolvla/steer/</code>.</p>
+<h2>Notation</h2>
+<ul>
+<li><strong>W</strong> (part of the injection): fixed matrix mapping z to FiLM parameters, [γ;β] = α·W·z, applied to
+  the expert MLP outputs of layers 7,15,23,31. <code>random</code> W is shared by all tasks; <code>pca</code> W is fitted per task.</li>
+<li><strong>z</strong> ∈ ℝ⁸. Test points are z = c·u_k: <strong>c</strong> is a scalar scale (x-axis "scale c"), <strong>u_k</strong> (k = 0…7) are 8
+  fixed random vectors drawn once from N(0, I₈). U only chooses which z points to probe (8 rays through
+  z=0); it is not part of the model. u_k are not normalized (‖u_k‖ 1.86–3.53).</li>
+<li><strong>Paired noise</strong>: episode (init r, rep j) uses flow-noise seed <code>seed + r + 1000·j</code> for every z, so z vs
+  z=0 differences come from z alone. Grid/val/transfer ran on Sol, line/plane/open-loop/t7/speed locally;
+  comparisons are always within one run.</li>
+<li><strong>eef effect</strong>: eef (end-effector) xyz at steps 20, 40, …, 200 (held after the episode ends); effect =
+  RMS distance (cm) between an episode with z and the z=0 episode with the same (init, noise).
+  <strong>z=0 noise</strong>: the same distance between z=0 rep j and rep 0 of the same init — how much the path moves
+  when only the noise seed changes. At c = 0 the effect is exactly 0.</li>
+<li><strong>main-effect fraction</strong>: for one (W, c), the share of Σ‖effect‖² explained by per-direction means over
+  inits (1 = a direction pushes the same way from every init; ≈1/#inits = no consistency). The noise line
+  is the same statistic with noise reps as "directions". Undefined at c = 0.</li>
+<li><strong>held-out</strong>: z is chosen on some inits (grid 0–9, line 0–7) and then evaluated, paired with z=0, on
+  inits never used for choosing (10–49 etc.), so selection luck does not inflate the result.</li>
+</ul>
+<h2>Baseline (z=0)</h2>
+<p>Local scan, 8 inits/task (<code>scan/</code>): tasks 0–9 = 3,7,8,8,6,8,7,3,8,5 /8 (63/80).
+Chosen: t0 (low), t9 (mid), t2 (ceiling). HPC grid z=0 (inits 0–9 × 8 noise reps): t0 0.34,
+t9 0.66, t2 0.99.</p>
+<h2>Open-loop sensitivity (no sim; 96 saved policy inputs per task)</h2>
+<ul>
+<li>Action noise is large: resampling flow noise at z=0 moves a0 by sd ≈ 0.29–0.35 (normalized).</li>
+<li>Median |Δa0| is linear in scale (random α=0.3: 0.023, 0.047, 0.094, 0.21, 0.47 at
+  scale 0.25…4); below ~0.1·(this α) a bf16 rounding floor (~0.002) dominates.</li>
+<li>Heavy tails: in t0/t9 the 99th pct jumps to ~0.8 already at scale 0.5 (mode switches);
+  t2 (unimodal) stays ≤0.24 at scale 1. PCA W has heavier tails at matched median.</li>
+<li>∂a0/∂z per state: effective rank ≈ 4.3 of 7 (random), 3.9 (PCA); Jacobian consistency across
+  states 0.22–0.5 random, 0.17 PCA (null ≈ 0.01): a z direction has a partly shared meaning.</li>
+</ul>
+<figure><img src="smolvla_steer_object/openloop_dose.png" alt="Open-loop |Δa0| vs scale (median, 25–75%), with the z=0 noise level"><figcaption>Open-loop |Δa0| vs scale (median, 25–75%), with the z=0 noise level</figcaption></figure>
+
+<h2>Closed-loop grid (HPC; scales −2,−1,0.5,1,2,4 × 8 dirs × inits 0–9)</h2>
+<p>Success (mean over 8 directions):</p>
+<table>
+<thead>
+<tr>
+<th>task (z=0)</th>
+<th>W</th>
+<th>−2</th>
+<th>−1</th>
+<th>+0.5</th>
+<th>+1</th>
+<th>+2</th>
+<th>+4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>t0 (0.34)</td>
+<td>random</td>
+<td>0.05</td>
+<td>0.10</td>
+<td>0.50</td>
+<td>0.45</td>
+<td>0.21</td>
+<td>0.01</td>
+</tr>
+<tr>
+<td>t0</td>
+<td>pca</td>
+<td>0.01</td>
+<td>0.21</td>
+<td>0.44</td>
+<td>0.29</td>
+<td>0.05</td>
+<td>0.00</td>
+</tr>
+<tr>
+<td>t9 (0.66)</td>
+<td>random</td>
+<td>0.26</td>
+<td>0.55</td>
+<td>0.75</td>
+<td>0.62</td>
+<td>0.25</td>
+<td>0.01</td>
+</tr>
+<tr>
+<td>t9</td>
+<td>pca</td>
+<td>0.23</td>
+<td>0.56</td>
+<td>0.74</td>
+<td>0.51</td>
+<td>0.19</td>
+<td>0.00</td>
+</tr>
+<tr>
+<td>t2 (0.99)</td>
+<td>random</td>
+<td>0.39</td>
+<td>0.88</td>
+<td>0.95</td>
+<td>0.80</td>
+<td>0.35</td>
+<td>0.00</td>
+</tr>
+<tr>
+<td>t2</td>
+<td>pca</td>
+<td>0.30</td>
+<td>0.84</td>
+<td>0.93</td>
+<td>0.79</td>
+<td>0.25</td>
+<td>0.00</td>
+</tr>
+</tbody>
+</table>
+<p>(±c means are over different directions, so +1 vs −1 differences are direction sampling, not sign.)</p>
+<p>Other metrics (<code>hpc/grid_metrics.json</code>, from <code>research/analyze.py</code>):</p>
+<ul>
+<li>Trajectory effect (eef xyz at steps 20…200, paired with z=0) vs noise effect (z=0 rep j vs
+  rep 0): about equal at scale 0.5, larger from scale 1 (t2: 13.5 vs 5.8 cm).</li>
+<li>Main-effect fraction (share of the effect explained by the direction, consistent across
+  inits): ≈ noise level at 0.5, 0.13–0.5 at 1, 0.5–0.96 at ≥2 (mostly shared failure modes).</li>
+<li>Overdispersion of per-direction success over binomial: 2–6 at |scale| 1–2 → directions differ
+  reliably; there is structure to search over.</li>
+<li>Best-of-8 per init is uninformative: 8 noise reps at z=0 already reach 0.9–1.0.</li>
+<li>Closed-loop antisymmetry (cos of mean effects of +u, −u): ≈0 for random, −0.2…−0.56 for PCA at
+  scale 1; positive at 2 (both signs fail the same way).</li>
+<li>Which directions are harmful is shared across tasks (same random W/U): corr of per-direction
+  success at |s|=2 = 0.55–0.90 between tasks.
+  <strong>Confounded:</strong> u_k are not normalized (‖u_k‖ = 1.86, 3.17, 2.03, 1.88, 1.94, 3.53, 2.97, 2.71),
+  and per-direction success tracks ‖u_k‖ (random W: Spearman −0.6…−0.9), so this is largely
+  "longer z hurts more". The picked u0/u4 are the two shortest. Normalize u_k in future runs.</li>
+<li>Open-loop predicts closed-loop: per-direction median chunk |Δa| vs success, Spearman ρ =
+  −0.6…−0.97 at scale 1–2 (pooled over tasks/W/scales ρ = −0.86).</li>
+</ul>
+<figure><img src="smolvla_steer_object/grid_success.png" alt="Grid success vs scale; thin lines = single directions; c=0 is z=0"><figcaption>Grid success vs scale; thin lines = single directions; c=0 is z=0</figcaption></figure>
+
+<figure><img src="smolvla_steer_object/effect_vs_noise.png" alt="eef effect and main-effect fraction vs scale; dashed = z=0 noise reference"><figcaption>eef effect and main-effect fraction vs scale; dashed = z=0 noise reference</figcaption></figure>
+
+<figure><img src="smolvla_steer_object/openloop_vs_closedloop.png" alt="Per-direction open-loop chunk |Δa| vs closed-loop success"><figcaption>Per-direction open-loop chunk |Δa| vs closed-loop success</figcaption></figure>
+
+<h2>Smoothness: line scans on t0 (local, 2 directions × 12 scales × inits 0–7)</h2>
+<p>Success along z = s·u_k (z=0: 0.38):</p>
+<table>
+<thead>
+<tr>
+<th>s</th>
+<th>−4</th>
+<th>−3</th>
+<th>−2</th>
+<th>−1.5</th>
+<th>−1</th>
+<th>−0.5</th>
+<th>0.5</th>
+<th>1</th>
+<th>1.5</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>random u0</td>
+<td>0</td>
+<td>0</td>
+<td>.12</td>
+<td>.25</td>
+<td>.38</td>
+<td>.38</td>
+<td>.75</td>
+<td>.88</td>
+<td>.88</td>
+<td>.75</td>
+<td>.88</td>
+<td>.12</td>
+</tr>
+<tr>
+<td>random u1</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>.12</td>
+<td>.50</td>
+<td>.38</td>
+<td>.12</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>pca u0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>.25</td>
+<td>.75</td>
+<td>.50</td>
+<td>.38</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+<tr>
+<td>pca u1</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>.88</td>
+<td>.25</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p>Unimodal along each line; random W has a wide plateau, PCA W a narrow window (|s| ≲ 1).</p>
+<figure><img src="smolvla_steer_object/line_t0.png" alt="t0 line scans: success along z = s·u_k"><figcaption>t0 line scans: success along z = s·u_k</figcaption></figure>
+
+<h2>Held-out validation (inits 10–49, unseen during selection)</h2>
+<ul>
+<li>
+<p>Line-scan pick, t0 random u0 (s=1), 3 noise seeds, n=120 paired: z=0 0.44 → 0.62,
+  31 wins / 10 losses, sign test p=0.0015. 2·u0: 0.625 (seed 1000). −u1: 0.00 (0 wins / 20 losses).</p>
+</li>
+<li>
+<p>Grid picks (top-2 of 48 (dir, scale) per task/W by success on inits 0–9; <code>val/selection.json</code>),
+  held-out inits 10–49 × 2 noise reps, n=80 paired with z=0:</p>
+</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>task</th>
+<th>z=0</th>
+<th>W</th>
+<th>pick (dir, s)</th>
+<th>grid</th>
+<th>held-out</th>
+<th>wins/losses</th>
+<th>sign p</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>t0</td>
+<td>0.39</td>
+<td>random</td>
+<td>4, +1</td>
+<td>0.9</td>
+<td><strong>0.78</strong></td>
+<td>36/5</td>
+<td>8e-7</td>
+</tr>
+<tr>
+<td>t0</td>
+<td></td>
+<td>random</td>
+<td>0, +2</td>
+<td>0.8</td>
+<td>0.64</td>
+<td>25/5</td>
+<td>3e-4</td>
+</tr>
+<tr>
+<td>t0</td>
+<td></td>
+<td>pca</td>
+<td>1, +0.5</td>
+<td>0.9</td>
+<td><strong>0.80</strong></td>
+<td>34/1</td>
+<td>2e-9</td>
+</tr>
+<tr>
+<td>t0</td>
+<td></td>
+<td>pca</td>
+<td>7, −1</td>
+<td>0.8</td>
+<td>0.78</td>
+<td>34/3</td>
+<td>1e-7</td>
+</tr>
+<tr>
+<td>t9</td>
+<td>0.81</td>
+<td>random</td>
+<td>2, +0.5</td>
+<td>0.9</td>
+<td><strong>0.93</strong></td>
+<td>10/1</td>
+<td>0.012</td>
+</tr>
+<tr>
+<td>t9</td>
+<td></td>
+<td>random</td>
+<td>4, +0.5</td>
+<td>0.8</td>
+<td>0.81</td>
+<td>2/2</td>
+<td>1</td>
+</tr>
+<tr>
+<td>t9</td>
+<td></td>
+<td>pca</td>
+<td>7, +0.5</td>
+<td>0.9</td>
+<td><strong>0.93</strong></td>
+<td>10/1</td>
+<td>0.012</td>
+</tr>
+<tr>
+<td>t9</td>
+<td></td>
+<td>pca</td>
+<td>7, +1</td>
+<td>0.9</td>
+<td>0.83</td>
+<td>12/11</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+<p>One round of random search over z already finds gains that generalize to unseen inits and
+  noise (t0 roughly doubles); in-sample grid numbers overestimate (winner's curse): the top
+  pick holds everywhere, second picks only on t0. Both W reach the same level.</p>
+<p>What the t0 picks change (held-out, from eef/gripper state): z=0 failures are mostly missed
+grasps — 92% of failed episodes close the fingers on air (width &lt; 1 cm) at least once; such
+empty closes occur in 69% of all z=0 episodes vs 16% (random d4, +1) and 17% (PCA d1, +0.5).
+(The 6 cm "closed" threshold in <code>analyze.py</code> is below the soup can's width, so its grasp-time
+column is not meaningful for t0.)</p>
+<figure><img src="smolvla_steer_object/heldout.png" alt="Held-out success (95% Wilson CI) and cross-task transfer (bootstrap CI)"><figcaption>Held-out success (95% Wilson CI) and cross-task transfer (bootstrap CI)</figcaption></figure>
+
+<figure><iframe src="smolvla_steer_object/traj_t0_3d.html" title="3D eef paths"></iframe><figcaption>Interactive 3D eef paths (drag to rotate). Top: t0 init 0 along z = s·u0. Bottom: t0 held-out z=0 vs the random-W pick (d4, s=+1), same noise; choose an init.</figcaption></figure>
+
+<h2>Cross-task transfer (random W; u0, u4 at s=1 picked on t0; inits 10–29 × 2 reps, n=40/task)</h2>
+<p>Same W and directions on every task, so a z found on t0 can be applied as is:</p>
+<table>
+<thead>
+<tr>
+<th>task</th>
+<th>0</th>
+<th>1</th>
+<th>2</th>
+<th>3</th>
+<th>4</th>
+<th>5</th>
+<th>6</th>
+<th>7</th>
+<th>8</th>
+<th>9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>z=0</td>
+<td>.45</td>
+<td>.75</td>
+<td>1.0</td>
+<td>.90</td>
+<td>.90</td>
+<td>.95</td>
+<td>.93</td>
+<td>.33</td>
+<td>.85</td>
+<td>.85</td>
+</tr>
+<tr>
+<td>u0</td>
+<td>.55</td>
+<td>.93</td>
+<td>1.0</td>
+<td>.75</td>
+<td>.95</td>
+<td>.82</td>
+<td>.95</td>
+<td>.62</td>
+<td>.97</td>
+<td>.85</td>
+</tr>
+<tr>
+<td>u4</td>
+<td>.75</td>
+<td>.80</td>
+<td>.97</td>
+<td>.47</td>
+<td>.97</td>
+<td>.82</td>
+<td>.95</td>
+<td>.78</td>
+<td>.95</td>
+<td>.82</td>
+</tr>
+</tbody>
+</table>
+<p>Paired over all tasks: u0 43 wins / 23 losses (p=0.019), u4 53/37 (p=0.11). t7 (the other low
+task, never used for selection) gains most (u4 +18/−0); t3 is hurt (u4 −18/+1), t5 mildly.
+Effects are partly task-general but a single z is not a universal improvement → task/context-
+conditioned z is needed for a "policy adaptation" use.</p>
+<p>Replication on t7 (local, random W): small grid (scales 0.5, 1 × 8 dirs × inits 0–7, z=0 0.44)
+→ top-2 picks validated on inits 30–49 × 2 reps (n=40 paired): z=0 0.50 → d1 s=0.5 <strong>0.75</strong>
+(11/1, p=0.006), d2 s=1 0.68 (13/6, p=0.17).</p>
+<h2>Landscape: plane scan on t0 (random W, z = a·u0 + b·u4, inits 0–7, z=0: 0.38)</h2>
+<table>
+<thead>
+<tr>
+<th>a \ b</th>
+<th>−1</th>
+<th>0</th>
+<th>0.5</th>
+<th>1</th>
+<th>2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>−1</td>
+<td>0.00</td>
+<td>0.38</td>
+<td>0.50</td>
+<td>0.75</td>
+<td>0.75</td>
+</tr>
+<tr>
+<td>0</td>
+<td>0.00</td>
+<td>(0.38)</td>
+<td>0.75</td>
+<td>0.88</td>
+<td>0.50</td>
+</tr>
+<tr>
+<td>0.5</td>
+<td>0.25</td>
+<td>0.75</td>
+<td>0.62</td>
+<td>0.88</td>
+<td>0.50</td>
+</tr>
+<tr>
+<td>1</td>
+<td>0.38</td>
+<td>0.88</td>
+<td>0.75</td>
+<td>0.88</td>
+<td>0.12</td>
+</tr>
+<tr>
+<td>2</td>
+<td>0.25</td>
+<td>0.75</td>
+<td>0.75</td>
+<td>0.62</td>
+<td>0.00</td>
+</tr>
+</tbody>
+</table>
+<p>A broad, smooth ridge (0.75–0.88 over a ∈ [0, 2], b ∈ [0.5, 1]) with failure toward b = −1 and
+large |z|: friendly to local search / CEM with a norm bound.</p>
+<figure><img src="smolvla_steer_object/plane_t0.png" alt="t0 plane scan: success on z = a·u0 + b·u4 (8 inits per cell)"><figcaption>t0 plane scan: success on z = a·u0 + b·u4 (8 inits per cell)</figcaption></figure>
+
+<h2>Style without failure (grid, successful episodes only)</h2>
+<p>t2 z=0 successful episodes take 122 ± 10 steps. At ~0.9 success, PCA dirs 0/4 give 107 steps at
+s=+1 and 154/165 at s=−1 (monotone, sign-odd: a speed knob); across directions successful
+episode length spans 101–185 steps. Random W directions change length less systematically.</p>
+<p>Held-out check (t2, PCA, inits 10–29, paired, <code>val-t2-speed-pca</code>): z=0 1.00 success, 119 steps.
+−u0 / −u4: 1.00 success, +29 / +32 steps (Wilcoxon p ≈ 9e-5); +u0 / +u4: 0.80 / 0.85 success,
+−11 / −9 steps on episodes where both succeed (p = 0.007 / 0.04). Slowing is free, speeding up
+costs success.</p>
+<h2>Takeaways</h2>
+<ol>
+<li>z → FiLM on the action expert is a real control space, not just noise: from |s| ≈ 1 the
+   trajectory change exceeds flow-noise resampling, it is partly consistent across init states,
+   directions differ reliably (overdispersion 2–6). Part of that spread is just ‖u_k‖ (u_k were not
+   normalized), so direction-vs-magnitude effects are not separated yet.</li>
+<li>The usable region is a bounded ball. Success is an inverted U in |z|: s ≤ 1 (median open-loop
+   |Δa0| ≲ 0.1, chunk |Δa| ≲ 0.15–0.2) is usable, s ≥ 2 mostly breaks the policy, s = 4 always.
+   Open-loop chunk |Δa| predicts closed-loop failure (ρ ≈ −0.86) → a cheap, sim-free trust region
+   or normalization for z before optimization.</li>
+<li>Reachability/optimizability looks good: one round of random search over 48 candidates on 10
+   inits gives held-out gains (t0 0.39 → 0.78–0.80, t9 0.81 → 0.93); success along lines and the
+   2-D plane is unimodal and smooth. CEM over a norm-bounded z should be sample-efficient; the
+   main risk is selection noise → score candidates with paired noise, several inits, and keep a
+   held-out set.</li>
+<li>Random vs PCA W: similar best-case gains. PCA has a narrower safe window (fails by |s| ≈ 1.5),
+   heavier open-loop tails and a more sign-odd closed-loop response; its directions read more
+   like knobs (validated speed knob on t2: slow +30 steps at no cost, fast −10 steps at −15–20%
+   success). Random W has the wider plateau.</li>
+<li>Evaluation for later optimization: paired-noise success on held-out inits (primary), paired
+   effect/noise ratio and main-effect fraction (controllability), open-loop |Δa| (budget).
+   Per-init best-of-K is useless here (8 noise reps at z=0 already reach 0.9–1.0).</li>
+</ol>
+<p>Caveats: u_k not normalized (see grid section), one W seed per scheme, d=8 and layers 7,15,23,31 fixed, libero_object only, grid on
+10 inits; z=0 rates differ between laptop and Sol (e.g. t9 5/8 local vs 0.81 held-out on Sol),
+so comparisons are always paired within one machine.</p>
+</body></html>
