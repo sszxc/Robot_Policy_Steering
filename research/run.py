@@ -26,6 +26,7 @@ def parse_args():
     parser.add_argument("--n-z", type=int, default=4, help="random directions u ~ N(0, I)")
     parser.add_argument("--scales", default="1", help="comma list; z = scale * u for each u")
     parser.add_argument("--zero-reps", type=int, default=1, help="z=0 episodes per init (noise reps); 0 skips z=0")
+    parser.add_argument("--z-reps", type=int, default=1, help="noise reps per init for z≠0")
     parser.add_argument("--z-seed", type=int, default=0)
     parser.add_argument("--z-file", default=None, help=".npy [K, dim]: use these as the directions u_k")
     parser.add_argument("--inits", type=int, default=2, help="init states per z")
@@ -76,7 +77,7 @@ def check(args, policy, env, procs, attach):
 
 def plan(args, dim):
     """Z rows: 0 = zero, then scale * u_k for each scale and direction u_k ~ N(0, I).
-    Episodes (z row, init, rep): z=0 for every rep, others rep 0; noise is paired by (init, rep)."""
+    Episodes (z row, init, rep): z=0 for zero_reps reps, others z_reps; noise is paired by (init, rep)."""
     U = np.load(args.z_file) if args.z_file else np.random.default_rng(args.z_seed).standard_normal((args.n_z, dim))
     args.n_z = len(U)
     scales = [float(c) for c in args.scales.split(",")]
@@ -85,7 +86,7 @@ def plan(args, dim):
     direction = np.array([-1] + [k for _ in scales for k in range(args.n_z)])
     inits = range(args.init_start, args.init_start + args.inits)
     episodes = [(0, r, j) for r in inits for j in range(args.zero_reps)]
-    episodes += [(k, r, 0) for k in range(1, len(Z)) for r in inits]
+    episodes += [(k, r, j) for k in range(1, len(Z)) for r in inits for j in range(args.z_reps)]
     return Z, scale, direction, episodes
 
 
