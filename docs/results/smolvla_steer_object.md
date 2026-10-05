@@ -59,6 +59,9 @@ Other metrics (`hpc/grid_metrics.json`, from `research/analyze.py`):
   scale 1; positive at 2 (both signs fail the same way).
 - Which directions are harmful is shared across tasks (same random W/U): corr of per-direction
   success at |s|=2 = 0.55–0.90 between tasks.
+  **Confounded:** u_k are not normalized (‖u_k‖ = 1.86, 3.17, 2.03, 1.88, 1.94, 3.53, 2.97, 2.71),
+  and per-direction success tracks ‖u_k‖ (random W: Spearman −0.6…−0.9), so this is largely
+  "longer z hurts more". The picked u0/u4 are the two shortest. Normalize u_k in future runs.
 - Open-loop predicts closed-loop: per-direction median chunk |Δa| vs success, Spearman ρ =
   −0.6…−0.97 at scale 1–2 (pooled over tasks/W/scales ρ = −0.86).
 
@@ -183,6 +186,6 @@ Regenerate with `python -m research.plot_steer`.
    effect/noise ratio and main-effect fraction (controllability), open-loop |Δa| (budget).
    Per-init best-of-K is useless here (8 noise reps at z=0 already reach 0.9–1.0).
 
-Caveats: one W seed per scheme, d=8 and layers 7,15,23,31 fixed, libero_object only, grid on
+Caveats: u_k not normalized (see grid section), one W seed per scheme, d=8 and layers 7,15,23,31 fixed, libero_object only, grid on
 10 inits; z=0 rates differ between laptop and Sol (e.g. t9 5/8 local vs 0.81 held-out on Sol),
 so comparisons are always paired within one machine.

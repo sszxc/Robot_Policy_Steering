@@ -127,14 +127,16 @@ def fig_grid_success(O, out):
     fig, axs = plt.subplots(1, 3, figsize=(9, 2.8), sharey=True)
     for ax, t in zip(axs, TASKS):
         r0 = runs[t, "random"]
-        ax.axhline(r0["success"][r0["ep_z"] == 0].mean(), color=COL["zero"], ls="--", lw=1.2, label="z=0")
+        s0 = r0["success"][r0["ep_z"] == 0].mean()
+        ax.axhline(s0, color=COL["zero"], ls="--", lw=1.2, label="z=0")
         for w in WS:
             s = dir_success(runs[t, w])
-            cs = sorted({c for c, _ in s})
-            M = np.array([[s[c, k] for c in cs] for k in range(8)])
+            cs = sorted({c for c, _ in s} | {0.0})  # c=0 is z=0 for every direction
+            M = np.array([[s0 if c == 0 else s[c, k] for c in cs] for k in range(8)])
             for row in M:
                 ax.plot(cs, row, color=COL[w], lw=0.7, alpha=0.25)
             ax.plot(cs, M.mean(0), "-o", color=COL[w], ms=4, label=f"{w} (mean of 8 dirs)")
+        ax.plot(0, s0, "o", color=COL["zero"], ms=6, zorder=5)
         ax.set(title=f"task {t}", xlabel="scale c", ylim=(-0.03, 1.03))
         ax.set_xticks(cs, [f"{c:g}".replace("0.5", ".5") for c in cs])
     axs[0].set_ylabel("success rate")
@@ -154,14 +156,20 @@ def fig_effect_vs_noise(O, out):
         for w in WS:
             keys = sorted((k for k in m if k.startswith(w + ":")), key=lambda k: float(k.split(":")[1]))
             cs = [float(k.split(":")[1]) for k in keys]
-            axs[0, j].plot(cs, [m[k]["effect_rms_cm"] for k in keys], "-o", ms=4, color=COL[w], label=w)
+            # c=0: effect is exactly 0 (same noise, same z); main-effect fraction is 0/0
+            e = [m[k]["effect_rms_cm"] for k in keys]
+            i0 = int(np.searchsorted(cs, 0))
+            axs[0, j].plot(cs[:i0] + [0] + cs[i0:], e[:i0] + [0] + e[i0:], "-o", ms=4, color=COL[w], label=w)
             axs[1, j].plot(cs, [m[k]["main_effect_frac"] for k in keys], "-o", ms=4, color=COL[w], label=w)
+        axs[0, j].plot(0, 0, "o", color=COL["zero"], ms=6, zorder=5)
+        axs[1, j].annotate("c=0:\nundefined", (0, 0.86), ha="center", fontsize=7, color=COL["zero"])
         any_m = next(iter(m.values()))
         axs[0, j].axhline(any_m["noise_rms_cm"], color=COL["zero"], ls="--", lw=1.2, label="z=0 noise")
         axs[1, j].axhline(any_m["main_effect_frac_noise"], color=COL["zero"], ls="--", lw=1.2, label="z=0 noise")
         axs[0, j].set_title(f"task {t}")
         axs[1, j].set_xlabel("scale c")
-        axs[1, j].set_xticks(cs, [f"{c:g}".replace("0.5", ".5") for c in cs])
+        ticks = sorted(cs + [0.0])
+        axs[1, j].set_xticks(ticks, [f"{c:g}".replace("0.5", ".5") for c in ticks])
     axs[0, 0].set(ylabel="eef effect RMS (cm)", ylim=(0, None))
     axs[1, 0].set(ylabel="main-effect fraction", ylim=(0, 1))
     axs[0, 0].legend(loc="lower left")
