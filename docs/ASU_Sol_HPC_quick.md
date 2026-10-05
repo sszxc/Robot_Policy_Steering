@@ -59,32 +59,16 @@ rsync -tr --progress xzhan742@soldtn.sol.rc.asu.edu:/scratch/xzhan742/project/re
 
 不要在登录节点做计算、装包或大批量传输；大文件、模型缓存和输出放 scratch，重要结果另行备份（scratch 90 天未访问清理、无快照）。不要使用 sudo、Docker 或自行安装 conda；环境用系统 mamba，容器用 Apptainer。
 
-## 本项目迁移后的入口
+## 本项目入口
 
-源码仍在 `~/Coding/thesis`，数据仍在 `/scratch/xzhan742/thesis`。
-项目结构见 [architecture.md](architecture.md)，环境记录见
-`platforms/environments/`。现有 Python 环境无需重建或升级。
+源码 `~/Coding/thesis`，数据/环境/输出 `/scratch/xzhan742/thesis`（路径在 `platforms/hpc/runtime.sh`）。结构见 [architecture.md](architecture.md)。
 
 ```bash
 cd ~/Coding/thesis
-# 在计算节点上的现有环境中执行一次；不安装依赖。
-python -m pip install --no-build-isolation --no-deps -e .
-
-sbatch --test-only platforms/hpc/slurm/smolvla_libero/eval.sbatch smoke
+python -m pip install --no-build-isolation --no-deps -e .   # 计算节点、现有环境内执行一次
 sbatch platforms/hpc/slurm/smolvla_libero/eval.sbatch smoke
-sbatch platforms/hpc/slurm/smolvla_libero/array.sbatch
+sbatch platforms/hpc/slurm/smolvla_libero/array.sbatch     # LIBERO-10 全量，10 个 task 并行
 sbatch platforms/hpc/slurm/smolvla_libero/aggregate.sbatch ARRAY_JOB_ID
 ```
 
-脚本从 Slurm 指定的仓库工作目录加载 `platforms/hpc/runtime.sh`。
-数据/输出/环境路径在 `runtime.sh` 中设置；Slurm header
-路径和资源通过 `sbatch` 参数覆盖。LIBERO 的通用入口是
-`experiments/libero/run_libero10_smolvla.sh`，结果目录必须是新目录。
-Object 单卡并发实验见
-`experiments/libero/object_parallel/README.md`。
-重汇总旧任务时可使用 `python -m research.evaluation.aggregate_eval ARRAY_JOB_ID
---output-dir NEW_DIRECTORY`，保留原结果。
-
-## 早期平台检查记录
-
-2026-10-01：纯密钥 SSH、account/QoS 查询、分区/GRES 查询、`mamba/latest` 可见性已验证。A100 测试任务 `64301454` 在 `sg019` 运行 7 秒，`COMPLETED / 0:0`。当时登录 shell 无 `myquota` 命令。后续环境安装和 LIBERO/EGL 结果见 [基线记录](results/smolvla_libero_baseline.md)；架构迁移验证见 [迁移记录](provenance/architecture-migration.md)。传输节点连接此前超时。
+Slurm header 路径和资源用 `sbatch` 参数覆盖。结果目录必须是新目录。Object 单卡并发见 `experiments/libero/object_parallel/README.md`。数据传输节点 `soldtn` 曾从本机连接超时，小文件可走登录节点。

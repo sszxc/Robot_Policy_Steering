@@ -50,7 +50,6 @@ cat "$RUN_DIR/resources/gpu-start.txt"
 # Prepare shared inputs once, before any task process starts.
 python -m research.pretrained.prepare_policy
 export POLICY="$THESIS_DATA_ROOT/models/smolvla-libero-local"
-export MODEL_PATHS_MANIFEST="$THESIS_DATA_ROOT/manifests/model-paths.json"
 python platforms/hpc/checks/gpu_preflight.py
 [[ -f "$LIBERO_CONFIG_PATH/config.yaml" ]] || {
   echo "Missing LIBERO config: $LIBERO_CONFIG_PATH/config.yaml" >&2; exit 1;

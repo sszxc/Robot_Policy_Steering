@@ -58,7 +58,6 @@ nvidia-smi
 git rev-parse HEAD
 python -m research.pretrained.prepare_policy
 export POLICY="$ROOT/models/smolvla-libero-local"
-export MODEL_PATHS_MANIFEST="$ROOT/manifests/model-paths.json"
 
 # This preflight uses its own process, so EGL state cannot leak into rollout workers.
 python platforms/hpc/checks/gpu_preflight.py

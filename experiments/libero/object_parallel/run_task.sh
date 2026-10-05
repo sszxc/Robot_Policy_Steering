@@ -15,9 +15,6 @@ provenance_args=(
   --suite libero_object --batch-size "$BATCH_SIZE" --task-ids "[$TASK_INDEX]" --seed "$SEED"
   --init-state-offset "$INIT_STATE_OFFSET"
 )
-if [[ -n "${MODEL_PATHS_MANIFEST:-}" ]]; then
-  provenance_args+=(--model-paths "$MODEL_PATHS_MANIFEST")
-fi
 python -m research.evaluation.provenance "${provenance_args[@]}"
 lerobot-eval \
   --seed="$SEED" --policy.path="$POLICY" --policy.device=cuda \

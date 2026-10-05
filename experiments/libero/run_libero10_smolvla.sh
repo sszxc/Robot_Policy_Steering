@@ -56,8 +56,5 @@ provenance_args=(
   --output-dir "$OUTPUT_DIR" --policy "$POLICY" --episodes "$EPISODES"
   --task-ids "$TASK_IDS" --seed "$SEED" --episode-length "$EPISODE_LENGTH"
 )
-if [[ -n "${MODEL_PATHS_MANIFEST:-}" ]]; then
-  provenance_args+=(--model-paths "$MODEL_PATHS_MANIFEST")
-fi
 python -m research.evaluation.provenance "${provenance_args[@]}"
 lerobot-eval "${args[@]}"

@@ -23,3 +23,4 @@ Note that remote resources are precious. Please make the most of the resources y
 
 # Code Structure
 This project currently has only one user and is in a state of agile development. If we need to refactor or adjust the APIs, we don't have to worry about backwards compatibility.
+Layout: `docs/architecture.md`. `lerobot/` is a frozen subtree; relevant parts are SmolVLA (now), Pi0.5 / GR00T (possible later) and the LIBERO env.

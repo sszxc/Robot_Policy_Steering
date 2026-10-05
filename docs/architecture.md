@@ -1,149 +1,50 @@
 # Project architecture
 
-One repository contains two domains: policy control-space research and robotics.
-Experiments connect these domains; platform code supplies deployment and runtime
-settings. Both machines use the same Git commit but separate Python environments.
-
-## Directory tree
-
-`[ignored]` describes local/runtime content excluded from Git. Planned work
-is tracked in `TODO.md`, not as empty directories.
+Two domains in one repo: policy control-space research (SmolVLA/LIBERO) and the
+UR5 + HX5 robotics stack. Laptop and HPC share the Git checkout, not the Python env.
 
 ```text
 thesis/
-├── README.md
-├── AGENTS.md
-├── TODO.md
-├── pyproject.toml
 ├── research/
-│   ├── pretrained/prepare_policy.py     pinned pretrained-policy preparation
-│   └── evaluation/
-│       ├── aggregate_eval.py
-│       ├── verify_eval.py
-│       └── provenance.py
-├── robotics/
-│   ├── sim/                             scenes, controllers, viewer
-│   ├── hardware/ur5/                    RTDE examples with explicit main()
-│   ├── teleop/                          Leap, retargeting and replay
-│   └── policies/
-│       ├── scripted/
-│       └── rl/                          MJX envs, training and evaluation
-├── experiments/
-│   └── libero/
-│       ├── run_libero10_smolvla.sh
-│       ├── baselines/local-baseline.json
-│       └── object_parallel/             self-contained: sh, sbatch, scripts, README
+│   ├── pretrained/prepare_policy.py   link pinned HF snapshots into an offline policy dir
+│   └── evaluation/                    provenance, verify_eval, aggregate_eval
+├── experiments/libero/
+│   ├── run_libero10_smolvla.sh        generic lerobot-eval launcher (LIBERO-10)
+│   ├── baselines/local-baseline.json  pinned Hub revisions (policy, backbone, assets)
+│   └── object_parallel/               self-contained: 10 Object tasks on one A100
 ├── platforms/
-│   ├── paths.py                         resource and runtime path resolution
-│   ├── hpc/
-│   │   ├── runtime.sh                   scratch paths and Python env
-│   │   ├── checks/gpu_preflight.py
-│   │   └── slurm/smolvla_libero/         setup/assets/eval/array/aggregate
-│   └── environments/
-│       ├── smolvla_libero/               existing constraints and manifests
-│       ├── robotics_sim/                observed laptop simulation versions
-│       └── robotics_local/              observed device environment versions
-├── assets/mujoco/
-│   ├── scene_base.xml
-│   ├── hx5_right.xml
-│   ├── universal_robots_ur5e/            current model, meshes and license
-│   ├── robotis_hand/
-│   └── objects/
-├── lerobot/                             Git subtree
-├── ros2_ws/
-│   ├── src/thesis_scene/
-│   ├── build/                           [ignored]
-│   ├── install/                         [ignored]
-│   └── log/                             [ignored]
+│   ├── paths.py                       repo/asset/data/output paths (env-var overrides)
+│   ├── hpc/                           runtime.sh, gpu_preflight.py, slurm/smolvla_libero/*.sbatch
+│   └── environments/                  SmolVLA pip constraints, robotics versions
+├── robotics/
+│   ├── sim/                           MuJoCo scene composition, Sim runner, hand postures, viewer
+│   ├── policies/scripted/             one script per hand task
+│   ├── policies/rl/                   MJX envs, brax PPO train/eval
+│   ├── teleop/                        Leap -> hand retargeting, record/replay
+│   └── hardware/ur5/                  ur_rtde examples
+├── assets/mujoco/                     hand/arm/object MJCF (UR5e model for now)
+├── ros2_ws/src/thesis_scene/          UR5 Gazebo + MoveIt (see ros2_ws/CHEATSHEET.md)
+├── lerobot/                           frozen LeRobot subtree (source + packaging only)
 ├── tests/
-│   ├── robotics/
-│   ├── research/
-│   └── platforms/
-├── docs/
-│   ├── architecture.md
-│   ├── usage.md
-│   ├── notes.md                         historical working notes
-│   ├── lerobot_maintenance.md
-│   ├── ASU_Sol_HPC_quick.md
-│   ├── ASU_Sol_HPC_reference.md
-│   ├── provenance/                      historical patches/migration record
-│   └── results/                         curated summaries and reports
-├── skills/ASU_Sol_HPC/
-├── data/                                [ignored] local datasets
-├── out/                                 [ignored] outputs and artifact archive
-├── .local-backups/                       [ignored] migration backups
-└── old_ros_env_for_reference/            [ignored] independent reference checkout
+├── docs/                              usage, notes (hand task results), HPC, results
+└── skills/ASU_Sol_HPC/                HPC skills, read on demand
 ```
 
-## Boundaries
+Ignored locally: `out/` (outputs), `data/`, `ros2_ws/{build,install,log}`, `.local-backups/`.
 
-`research` owns control layers, latent optimization and pretrained-policy adapters
-(currently only `pretrained/` and shared LIBERO evaluation tools).
-`robotics` owns the physical system, its simulation and simple scripted/RL/IL
-policies. `experiments` owns benchmark protocols and combinations of methods,
-models and environments; each experiment keeps its own launchers and scripts in
-one directory. `platforms` owns only shared runtime settings, environment records
-and checks.
+## Conventions
 
-Keep LIBERO-specific task configuration in experiments. Real-data VLA fine-tuning
-experiments will reuse LeRobot and research code. Do not force LIBERO and UR5/HX5 into a common environment API before there
-is a concrete integration need. Adapt observations and actions explicitly then.
-
-Keep LeRobot changes in its subtree and separate commits. Preserve ROS workspace
-layout; ROS packages may call installed project modules without copying them.
-The current RL environment builders remain with their policies during this move.
-
-## Installation, configuration and data
-
-The project uses top-level packages installed editable with `pip install
---no-build-isolation --no-deps -e .`. LeRobot is installed separately. Assets and
-configuration are resolved from the editable checkout; distributing a standalone
-wheel with bundled robot assets is outside this setup.
-
-`platforms/paths.py` resolves the checkout from its own installed location, or
-`THESIS_REPO_ROOT`. Environment variables set machine paths, with defaults for the
-laptop: `THESIS_DATA_ROOT` (`data`), `THESIS_OUTPUT_ROOT` (`out`) and
-`THESIS_UR5_IP` (`192.168.1.132`). Relative paths resolve from the checkout.
-Explicit CLI file arguments remain relative to the caller's working directory.
-
-HPC shell jobs source `runtime.sh`, which exports the scratch values of these
-variables and `THESIS_PYTHON_ENV`, then enters the checkout. Slurm header paths
-and resources are submission settings: override them through `sbatch` flags if
-needed; shell variables cannot expand in headers.
-
-Local outputs remain in `out/`, datasets in `data/`. HPC data, models, caches,
-environments and outputs remain under `/scratch/xzhan742/thesis`. Record versions
-separately for simulation/MJX, laptop devices and SmolVLA/LIBERO. Observed version
-lists are evidence, not universal installation locks. No dependencies were
-upgraded by the move.
-
-Track source, static resources/licenses, configs, scripts, environment records,
-docs and skills. Ignore raw recordings, checkpoints, videos, caches, archives,
-ordinary logs and build output. Curated metrics/reports may be committed with
-their input revisions and artifact locations. Existing tracked history is retained.
-
-LIBERO runs record commit/dirty state, inputs, seed, versions, model references and
-output paths before evaluation. A run directory must be new. The historical
-baseline manifest is identified as a reference; local pinned runs additionally
-record their actual model paths. `eval_info.json` remains the authoritative
-rollout result. Important scratch outputs require a separate durable backup.
-
-## Migration mapping
-
-| Previous location | Current location |
-| --- | --- |
-| `sim/`, `view.py` | `robotics/sim/` |
-| `tasks/` | `robotics/policies/scripted/` |
-| `rl/` | `robotics/policies/rl/` |
-| `teleop/` | `robotics/teleop/`, with UR5 scripts in `robotics/hardware/ur5/` |
-| `mujoco/` | `assets/mujoco/` |
-| `hpc/smolvla_libero/*.sbatch` | `platforms/hpc/slurm/smolvla_libero/` |
-| HPC generic Python tools | `research/pretrained/`, `research/evaluation/` |
-| HPC GPU preflight | `platforms/hpc/checks/` |
-| `lerobot/run_libero10_smolvla.sh` | `experiments/libero/run_libero10_smolvla.sh` |
-| `USAGE.md`, `NOTES.md`, `LEROBOT_MAINTENANCE.md` | `docs/` |
-| `docs/hpc/smolvla/` | `docs/provenance/` and `platforms/environments/` |
-| `hpc/smolvla_libero/results/` | curated `docs/results/`, raw `out/archive/` |
-
-Old Python entrypoints are retired. See `usage.md` for replacements. Historical
-notes, patches and baseline manifests retain their original paths as evidence.
+- Keep LIBERO-specific config in `experiments/`; don't force LIBERO and UR5/HX5
+  into a shared env API until a concrete integration needs it.
+- `lerobot/` is a squashed subtree of upstream `e0d50211`, frozen (no upstream
+  pulls; non-source files removed). Edit it in place, in separate commits. Relevant:
+  SmolVLA, possibly Pi0.5 / GR00T later, and the LIBERO env.
+- Install the root package with `pip install --no-build-isolation --no-deps -e .`
+  into an existing env; LeRobot is installed separately in the SmolVLA env.
+- `platforms/paths.py` env vars: `THESIS_REPO_ROOT`, `THESIS_DATA_ROOT` (`data`),
+  `THESIS_OUTPUT_ROOT` (`out`), `THESIS_UR5_IP` (`192.168.1.132`). HPC jobs source
+  `platforms/hpc/runtime.sh`, which sets scratch values and `THESIS_PYTHON_ENV`.
+- Each LIBERO run gets a new output dir with `provenance.json` (commit, dirty,
+  run args); lerobot's `eval_info.json` is the result.
+- Git holds source, assets, configs, docs and small curated results; never
+  checkpoints, videos, datasets or raw logs. Back up important scratch outputs.
