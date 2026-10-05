@@ -333,7 +333,7 @@ def fig_heldout(O, out):
 
 
 PLOTLY_PAGE = """<!doctype html><html><head><meta charset="utf-8"><title>{title}</title>
-<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script src="../plotly.min.js"></script>
 <style>body{{margin:0;font-family:system-ui,sans-serif;background:#fcfcfb}} .p{{height:480px}}</style>
 </head><body>{divs}<script>{scripts}</script></body></html>"""
 
@@ -390,6 +390,10 @@ def fig_traj3d(O, out):
                       scene=dict(aspectmode="data", xaxis_title="x (cm)", yaxis_title="y (cm)", zaxis_title="z (cm)"))
         divs += f'<div id="f{n}" class="p"></div>'
         scripts += f"Plotly.newPlot('f{n}', {json.dumps(traces)}, {json.dumps(layout)});\n"
+    js = out.parent / "plotly.min.js"  # shared by all reports in docs/results; works offline
+    if not js.exists():
+        from plotly.offline import get_plotlyjs
+        js.write_text(get_plotlyjs())
     (out / "traj_t0_3d.html").write_text(PLOTLY_PAGE.format(title="eef paths", divs=divs, scripts=scripts))
     print("wrote", out / "traj_t0_3d.html")
 
