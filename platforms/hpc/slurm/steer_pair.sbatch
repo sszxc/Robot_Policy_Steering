@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Random-W and PCA-W steering grids for one task, two processes sharing one A100.
 # sbatch steer_pair.sbatch TASK_ID PCA_PT ALPHA_RANDOM ALPHA_PCA [research.run args...]
-# The random run also holds the z=0 noise reps (pass --zero-reps); the PCA run skips z=0.
+# PCA_PT=fit: first fit PCA on 24 default episodes of this task. The random run holds the
+# z=0 noise reps (pass --zero-reps); the PCA run skips z=0.
 #SBATCH --job-name=steer-pair
 #SBATCH --account=grp_hbenamor
 #SBATCH --partition=htc
@@ -11,7 +12,7 @@
 #SBATCH --cpus-per-task=32
 #SBATCH --mem=128G
 #SBATCH --gpus=a100:1
-#SBATCH --time=03:00:00
+#SBATCH --time=02:30:00
 #SBATCH --export=NONE
 #SBATCH --chdir=/home/xzhan742/Coding/thesis
 #SBATCH --output=/scratch/xzhan742/thesis/logs/%x-%j.out
@@ -27,6 +28,11 @@ TASK=$1 PCA=$2 ALPHA_RANDOM=$3 ALPHA_PCA=$4
 shift 4
 out="$THESIS_OUTPUT_ROOT/smolvla/steer/pair-${SLURM_JOB_ID:?Run using sbatch}-t$TASK"
 mkdir -p "$out"
+if [[ $PCA == fit ]]; then
+  python -m research.fit_pca --policy "$THESIS_DATA_ROOT/models/smolvla-libero-local" --task-id "$TASK" \
+    --episodes 24 --batch-size 24 --output-dir "$out/pca_fit" > "$out/pca_fit.log" 2>&1
+  PCA=$out/pca_fit/pca.pt
+fi
 run=(python -m research.run --policy "$THESIS_DATA_ROOT/models/smolvla-libero-local" --task-id "$TASK" "$@")
 "${run[@]}" --w random --alpha "$ALPHA_RANDOM" --output-dir "$out/random" > "$out/random.log" 2>&1 &
 p1=$!
