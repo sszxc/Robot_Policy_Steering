@@ -13,7 +13,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     rollout.add_args(parser)
     parser.add_argument("--layers", default="7,15,23,31")
-    parser.add_argument("--episodes", type=int, default=10, help="init states 0..episodes-1")
+    parser.add_argument("--episodes", type=int, default=24, help="init states 0..episodes-1")
+    parser.add_argument("--obs-every", type=int, default=20, help="keep policy inputs every N steps (openloop.py)")
     args = parser.parse_args()
     assert args.episodes % args.batch_size == 0, "episodes must be a multiple of batch size"
     layers = [int(l) for l in args.layers.split(",")]
@@ -34,10 +35,13 @@ def main():
 
     for l in layers:
         expert.layers[l].mlp.register_forward_hook(make_hook(l))
-    successes = []
+    successes, steps, inputs = [], [], []
     for start in range(0, args.episodes, args.batch_size):
         ids = range(start, start + args.batch_size)
-        successes += rollout.run_batch(policy, env, procs, ids, args.seed)["success"].tolist()
+        res = rollout.run_batch(policy, env, procs, ids, args.seed, obs_every=args.obs_every)
+        successes += res["success"].tolist()
+        steps += res["steps"].tolist()
+        inputs += res["inputs"]
 
     result = {}
     for l, (n, sx, sxx) in stats.items():
@@ -48,7 +52,13 @@ def main():
                      "eigvecs": eigvecs.float().cpu(), "n": n}
         ratio = (eigvals.cumsum(0) / eigvals.sum()).cpu().numpy()
         print(f"layer {l}: n={n}, explained variance top1/8/32 = {ratio[0]:.3f}/{ratio[7]:.3f}/{ratio[31]:.3f}")
-    torch.save({"layers": result, "success": successes}, out / "pca.pt")
+    torch.save({"layers": result, "success": successes, "steps": steps}, out / "pca.pt")
+    keys = [k for k, v in inputs[0].items() if torch.is_tensor(v)]
+    bank = {k: torch.stack([x[k] for x in inputs]) for k in keys}
+    bank = {k: v.half() if v.is_floating_point() and v.ndim == 4 else v for k, v in bank.items()}  # images
+    bank["task"] = [x["task"] for x in inputs]
+    torch.save(bank, out / "inputs.pt")
+    print(f"{len(inputs)} policy inputs saved for openloop.py")
     print(f"success {sum(successes)}/{len(successes)}; saved {out / 'pca.pt'}")
     env.close()
 

@@ -1,10 +1,9 @@
-"""Steer SmolVLA with z: evaluate z=0 plus random z's on the same LIBERO init states.
+"""Steer SmolVLA with z: z=0 (noise reps) and scale * random directions on the same init states.
 
 --check instead verifies the injection on one fixed observation batch and noise: z=0 is
 bit-identical to the unhooked policy, z≠0 changes actions, and each env only sees its own z.
 """
 import argparse
-import json
 
 import numpy as np
 import torch
@@ -24,11 +23,13 @@ def parse_args():
     parser.add_argument("--alpha", type=float, default=0.1)
     parser.add_argument("--w", default="random", help='"random" or a fit_pca.py pca.pt path')
     parser.add_argument("--w-seed", type=int, default=0)
-    parser.add_argument("--n-z", type=int, default=4, help="random z ~ N(0, I), plus z=0")
+    parser.add_argument("--n-z", type=int, default=4, help="random directions u ~ N(0, I)")
+    parser.add_argument("--scales", default="1", help="comma list; z = scale * u for each u")
+    parser.add_argument("--zero-reps", type=int, default=1, help="z=0 episodes per init (noise reps); 0 skips z=0")
     parser.add_argument("--z-seed", type=int, default=0)
     parser.add_argument("--inits", type=int, default=2, help="init states per z")
     parser.add_argument("--init-start", type=int, default=0)
-    parser.add_argument("--videos", type=int, default=1, help="save videos for the first N init states of each z")
+    parser.add_argument("--videos", type=int, default=1, help="save rep-0 videos for the first N init states of each z")
     parser.add_argument("--check", action="store_true")
     return parser.parse_args()
 
@@ -72,6 +73,20 @@ def check(args, policy, env, procs, attach):
     print("CHECK PASSED" if ok else "CHECK FAILED")
 
 
+def plan(args, dim):
+    """Z rows: 0 = zero, then scale * u_k for each scale and direction u_k ~ N(0, I).
+    Episodes (z row, init, rep): z=0 for every rep, others rep 0; noise is paired by (init, rep)."""
+    U = np.random.default_rng(args.z_seed).standard_normal((args.n_z, dim))
+    scales = [float(c) for c in args.scales.split(",")]
+    Z = np.concatenate([np.zeros((1, dim))] + [c * U for c in scales])
+    scale = np.array([0.0] + [c for c in scales for _ in range(args.n_z)])
+    direction = np.array([-1] + [k for _ in scales for k in range(args.n_z)])
+    inits = range(args.init_start, args.init_start + args.inits)
+    episodes = [(0, r, j) for r in inits for j in range(args.zero_reps)]
+    episodes += [(k, r, 0) for k in range(1, len(Z)) for r in inits]
+    return Z, scale, direction, episodes
+
+
 def main():
     args = parse_args()
     out = rollout.new_run_dir(args, f"steer-{args.suite}-t{args.task_id}")
@@ -83,36 +98,42 @@ def main():
         return env.close()
 
     dim, set_z = attach()
-    rng = np.random.default_rng(args.z_seed)
-    Z = np.concatenate([np.zeros((1, dim)), rng.standard_normal((args.n_z, dim))])
-    inits = list(range(args.init_start, args.init_start + args.inits))
-    episodes = [(k, r) for k in range(len(Z)) for r in inits]
-    n = len(episodes)
-    padded = episodes + [episodes[0]] * (-n % args.batch_size)  # fill the last batch; extras dropped
-    success = np.full((len(Z), len(inits)), -1)  # -1 = not run yet
-    steps = np.zeros((len(Z), len(inits)), dtype=int)
+    Z, scale, direction, episodes = plan(args, dim)
+    n, B, T = len(episodes), args.batch_size, env.call("_max_episode_steps")[0]
+    padded = episodes + [episodes[0]] * (-n % B)  # fill the last batch; extras dropped
+    ep = np.array(episodes)
+    res_all = {"success": np.zeros(n, bool), "steps": np.zeros(n, int),
+               "state": np.zeros((n, T, 8), np.float32), "action": np.zeros((n, T, 7), np.float32)}
     (out / "videos").mkdir()
     fps = env.metadata.get("render_fps", 20)
-    for start in range(0, n, args.batch_size):
-        batch = padded[start:start + args.batch_size]
-        real = range(min(args.batch_size, n - start))
-        set_z(Z[[k for k, _ in batch]])
-        keep = [i for i in real if batch[i][1] - args.init_start < args.videos]
-        res = rollout.run_batch(policy, env, procs, [r for _, r in batch], args.seed, video_envs=keep)
+    for start in range(0, n, B):
+        batch = padded[start:start + B]
+        real = range(min(B, n - start))
+        set_z(Z[[k for k, _, _ in batch]])
+        keep = [i for i in real if batch[i][1] - args.init_start < args.videos and batch[i][2] == 0]
+        res = rollout.run_batch(policy, env, procs, [r for _, r, _ in batch], args.seed,
+                                noise_seeds=[args.seed + r + 1000 * j for _, r, j in batch], video_envs=keep)
         for i in real:
-            k, j = batch[i][0], batch[i][1] - args.init_start
-            success[k, j], steps[k, j] = res["success"][i], res["steps"][i]
+            e, t = start + i, res["state"].shape[1]
+            res_all["success"][e], res_all["steps"][e] = res["success"][i], res["steps"][i]
+            # after done the env is frozen; pad with the last valid value
+            res_all["state"][e, :t] = res["state"][i]
+            res_all["state"][e, t:] = res["state"][i, -1]
+            res_all["action"][e, :t] = res["action"][i]
         for i in keep:
-            k, r = batch[i]
-            name = f"z{k:02d}_init{r:02d}_{'ok' if res['success'][i] else 'fail'}.mp4"
+            k, r, _ = batch[i]
+            name = f"z{k:02d}_s{scale[k]:+.2f}_d{direction[k]}_init{r:02d}_{'ok' if res['success'][i] else 'fail'}.mp4"
             write_video(out / "videos" / name, list(res["frames"][i]), fps)
-        results = {"init_ids": inits, "z": Z.tolist(), "success": success.tolist(), "steps": steps.tolist()}
-        (out / "results.json").write_text(json.dumps(results, indent=2) + "\n")
-        print(f"episodes done: {start + len(real)}/{n}")
+        np.savez_compressed(out / "results.npz", Z=Z, scale=scale, direction=direction, ep_z=ep[:, 0],
+                            ep_init=ep[:, 1], ep_rep=ep[:, 2], done=np.arange(n) < start + len(real), **res_all)
+        print(f"episodes done: {start + len(real)}/{n}", flush=True)
+    sr = {}
     for k in range(len(Z)):
-        print(f"z{k:02d} |z|={np.linalg.norm(Z[k]):.2f}: success {success[k].sum()}/{len(inits)}, "
-              f"mean steps {steps[k].mean():.0f}")
-    print(f"z=0: {success[0].mean():.2f}; random z mean: {success[1:].mean():.2f}; results in {out}")
+        m = ep[:, 0] == k
+        sr.setdefault(scale[k], []).append(res_all["success"][m].mean())
+    for c, v in sr.items():
+        print(f"scale {c:+.2f}: success {np.mean(v):.3f} over {len(v)} z")
+    print(f"results in {out}")
     env.close()
 
 
