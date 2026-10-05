@@ -27,6 +27,7 @@ def parse_args():
     parser.add_argument("--scales", default="1", help="comma list; z = scale * u for each u")
     parser.add_argument("--zero-reps", type=int, default=1, help="z=0 episodes per init (noise reps); 0 skips z=0")
     parser.add_argument("--z-seed", type=int, default=0)
+    parser.add_argument("--z-file", default=None, help=".npy [K, dim]: use these as the directions u_k")
     parser.add_argument("--inits", type=int, default=2, help="init states per z")
     parser.add_argument("--init-start", type=int, default=0)
     parser.add_argument("--videos", type=int, default=1, help="save rep-0 videos for the first N init states of each z")
@@ -76,7 +77,8 @@ def check(args, policy, env, procs, attach):
 def plan(args, dim):
     """Z rows: 0 = zero, then scale * u_k for each scale and direction u_k ~ N(0, I).
     Episodes (z row, init, rep): z=0 for every rep, others rep 0; noise is paired by (init, rep)."""
-    U = np.random.default_rng(args.z_seed).standard_normal((args.n_z, dim))
+    U = np.load(args.z_file) if args.z_file else np.random.default_rng(args.z_seed).standard_normal((args.n_z, dim))
+    args.n_z = len(U)
     scales = [float(c) for c in args.scales.split(",")]
     Z = np.concatenate([np.zeros((1, dim))] + [c * U for c in scales])
     scale = np.array([0.0] + [c for c in scales for _ in range(args.n_z)])

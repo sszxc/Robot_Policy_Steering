@@ -101,6 +101,10 @@ def main():
             rw = [r for r in rt if r["w"] == w]
             for c in sorted({c for r in rw for c in r["scale"]} - {0.0}):
                 eps = {k: cat(k, [(r, r["scale"] == c) for r in rw]) for k in keys}
+                n_dirs, n_inits = len(np.unique(eps["dir"])), len(np.unique(zero["ep_init"]))
+                if len(eps["dir"]) < n_dirs * n_inits:
+                    print(f"skip {w} {c:+.2f}: incomplete ({len(eps['dir'])}/{n_dirs * n_inits})")
+                    continue
                 groups[(w, c)] = metrics(eps, zero)
         anti = antisymmetry(groups)
         print(f"task {task}: z=0 success {zero['success'].mean():.2f} ({len(zero['success'])} eps)")
