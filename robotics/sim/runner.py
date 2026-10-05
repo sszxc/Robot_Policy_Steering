@@ -252,11 +252,11 @@ class Sim:
 
 
 def cli_sim(model, name, cam=None):
-    """Sim from task-script flags: --viewer, --video [path] (default out/<name>.mp4), --log path.npz."""
+    """Sim from task-script flags: --viewer, --video [path] (default out/scripted/<name>/<name>.mp4), --log path.npz."""
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument("--viewer", action="store_true")
-    p.add_argument("--video", nargs="?", const=f"str(output_path('')){name}.mp4")
+    p.add_argument("--video", nargs="?", const=str(output_path("scripted", name, f"{name}.mp4")))
     p.add_argument("--log")
     a, _ = p.parse_known_args()
     return Sim(model, viewer=a.viewer, video=a.video, cam=cam, log=a.log)

@@ -16,7 +16,7 @@ Default is `arm` (UR5e + hand). `hand` is the hand alone.
 python -m robotics.policies.scripted.<name> [--viewer] [--video [path]] [--log path.npz]
 ```
 
-`--viewer` opens a MuJoCo window. `--video` records `out/<name>.mp4`; `--video path.mp4` records that file. `--log` writes the trajectory to an npz.
+`--viewer` opens a MuJoCo window. `--video` records `out/scripted/<name>/<name>.mp4`; `--video path.mp4` records that file. `--log` writes the trajectory to an npz.
 
 | Command | What it does | Extra arguments |
 |---|---|---|
@@ -26,7 +26,7 @@ python -m robotics.policies.scripted.<name> [--viewer] [--video [path]] [--log p
 | `robotics.policies.scripted.scissors` | Open and close scissors with the fingers | |
 | `robotics.policies.scripted.align` | In-hand rod alignment: slide, pivot, translate | |
 | `robotics.policies.scripted.screwdriver` | Finger-twirl a screwdriver (clockwise only) | |
-| `robotics.policies.scripted.baoding` | Orbit two balls with a fixed finger gait | `--search`: CEM search, then exit (80 iters, population 256, elite 24, 16 workers, seed 0; not configurable). Best params go to `out/baoding/best.npy`. Ignores `--viewer` / `--video` / `--log` |
+| `robotics.policies.scripted.baoding` | Orbit two balls with a fixed finger gait | `--search`: CEM search, then exit (80 iters, population 256, elite 24, 16 workers, seed 0; not configurable). Best params go to `out/scripted/baoding/best.npy`. Ignores `--viewer` / `--video` / `--log` |
 | `robotics.policies.scripted.rubik` | Cube fixed on the table; the thumb turns the top layer | `--turns N` (default 4), 90° each |
 
 ## Reinforcement learning
@@ -55,12 +55,12 @@ MUJOCO_GL=egl python -m robotics.policies.rl.<name> [--params path.pkl] ...
 
 | Command | Arguments (defaults included) | Video |
 |---|---|---|
-| `robotics.policies.rl.cube_eval` | `--params out/rl/cube/params.pkl`, `--episodes 5`, `--video_episodes 2`, `--video out/rl/cube.mp4`, `--viewer`, `--goal full\|z` (default `full`), `--seed 0` | First `--video_episodes` are `out/rl/cube_0.mp4`, `cube_1.mp4` (`.mp4` replaced by `_<episode>.mp4`) |
-| `robotics.policies.rl.screwdriver_eval` | `--params out/rl/screwdriver/params.pkl`, `--seconds 10` (per direction), `--video out/rl/screwdriver.mp4`, `--viewer`, `--directions 1,-1` (comma-separated, run in order) | Every direction goes into the same file |
-| `robotics.policies.rl.pen_eval` | `--params out/rl/pen/best_params.pkl`, `--episodes 10`, `--video out/rl/pen.mp4`, `--viewer`, `--condim 3` (must match training) | Episodes 0 and 1 (CCW, CW) are `out/rl/pen_ccw.mp4`, `pen_cw.mp4` |
+| `robotics.policies.rl.cube_eval` | `--params out/rl/cube/params.pkl`, `--episodes 5`, `--video_episodes 2`, `--video out/rl/cube/cube.mp4`, `--viewer`, `--goal full\|z` (default `full`), `--seed 0` | First `--video_episodes` are `out/rl/cube/cube_0.mp4`, `cube_1.mp4` (`.mp4` replaced by `_<episode>.mp4`) |
+| `robotics.policies.rl.screwdriver_eval` | `--params out/rl/screwdriver/params.pkl`, `--seconds 10` (per direction), `--video out/rl/screwdriver/screwdriver.mp4`, `--viewer`, `--directions 1,-1` (comma-separated, run in order) | Every direction goes into the same file |
+| `robotics.policies.rl.pen_eval` | `--params out/rl/pen/best_params.pkl`, `--episodes 10`, `--video out/rl/pen/pen.mp4`, `--viewer`, `--condim 3` (must match training) | Episodes 0 and 1 (CCW, CW) are `out/rl/pen/pen_ccw.mp4`, `pen_cw.mp4` |
 | `robotics.policies.rl.pen_check` | `--params out/rl/pen/best_params.pkl`, `--dir 1` (`+1` CCW, `-1` CW), `--seconds 20` | Prints whether the policy is exploiting the reward |
-| `robotics.policies.rl.baoding_eval` | `--params out/rl/baoding/best_params.pkl`, `--period 16` (seconds per target revolution; training default is 8), `--episodes 5`, `--video out/rl/baoding.mp4`, `--viewer` | Only episode 0 |
-| `robotics.policies.rl.rubik_eval` | `--params out/rl/rubik/params.pkl`, `--episodes 5`, `--video_episodes 2`, `--video out/rl/rubik.mp4`, `--viewer` | Same as cube: `out/rl/rubik_0.mp4`, `rubik_1.mp4` |
+| `robotics.policies.rl.baoding_eval` | `--params out/rl/baoding/best_params.pkl`, `--period 16` (seconds per target revolution; training default is 8), `--episodes 5`, `--video out/rl/baoding/baoding.mp4`, `--viewer` | Only episode 0 |
+| `robotics.policies.rl.rubik_eval` | `--params out/rl/rubik/params.pkl`, `--episodes 5`, `--video_episodes 2`, `--video out/rl/rubik/rubik.mp4`, `--viewer` | Same as cube: `out/rl/rubik/rubik_0.mp4`, `rubik_1.mp4` |
 
 ### GPU batched eval
 
@@ -127,6 +127,6 @@ TASK_IDS='[0]' EPISODES=1 bash experiments/libero/run_libero10_smolvla.sh
 
 The launcher retains LIBERO-10 relative actions and seed 1000 by default.
 `POLICY`, `TASK_IDS`, `EPISODES`, `SEED`, `EPISODE_LENGTH`, and `OUTPUT_DIR` can
-override the run inputs. Default results receive a new directory under `out/`;
+override the run inputs. Default results receive a new directory under `out/libero/smolvla/vanilla/`;
 an explicitly selected directory must also be new. Each run records provenance.
 For HPC submission use [the quick reference](ASU_Sol_HPC_quick.md).

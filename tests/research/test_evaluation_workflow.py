@@ -39,15 +39,15 @@ def test_launcher_records_inputs_and_preserves_existing_results(tmp_path):
 
 def test_aggregate_reads_old_format_without_overwriting_baseline(tmp_path):
     for task_id in range(10):
-        folder = tmp_path / f"libero10-task{task_id}-123_{task_id}"
-        folder.mkdir()
+        folder = tmp_path / "smolvla/vanilla" / f"libero10-task{task_id}-123_{task_id}"
+        folder.mkdir(parents=True)
         overall = dict(n_episodes=10, n_success=task_id, pc_success=10 * task_id,
                        eval_s=1, verified_videos=10)
         (folder / "verification.json").write_text(json.dumps(overall))
         (folder / "eval_info.json").write_text(json.dumps({"per_task": [{
             "task_group": "libero_10", "task_id": task_id,
             "task_description": f"Task {task_id}", "n_success": task_id}]}))
-    historical = tmp_path / "libero10-full-array-123"
+    historical = tmp_path / "smolvla/vanilla/libero10-array-123"
     historical.mkdir()
     (historical / "summary.json").write_text("historical result\n")
     out = tmp_path / "migration-check"

@@ -18,7 +18,7 @@ from robotics.sim import Sim
 p = argparse.ArgumentParser()
 p.add_argument("--params", default=str(output_path('rl/screwdriver/params.pkl')))
 p.add_argument("--seconds", type=float, default=10.0, help="per direction")
-p.add_argument("--video", default=str(output_path('rl/screwdriver.mp4')))
+p.add_argument("--video", default=str(output_path('rl/screwdriver/screwdriver.mp4')))
 p.add_argument("--viewer", action="store_true")
 p.add_argument("--directions", default="1,-1")
 a = p.parse_args()

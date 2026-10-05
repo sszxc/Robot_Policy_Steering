@@ -26,8 +26,8 @@ export EPISODES="${1:-10}" BATCH_SIZE="${2:-1}" SEED=1000
   echo 'BATCH_SIZE must divide EPISODES exactly.' >&2; exit 2;
 }
 libero_runtime
-RUN_DIR="$THESIS_OUTPUT_ROOT/libero-object-parallel-${SLURM_JOB_ID:?Run using sbatch}"
-mkdir -p "$THESIS_OUTPUT_ROOT"
+RUN_DIR="$THESIS_OUTPUT_ROOT/smolvla/vanilla/liberoobj-parallel-${SLURM_JOB_ID:?Run using sbatch}"
+mkdir -p "$(dirname "$RUN_DIR")"
 mkdir "$RUN_DIR"
 mkdir "$RUN_DIR/logs" "$RUN_DIR/resources"
 hostname

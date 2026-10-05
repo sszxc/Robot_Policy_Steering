@@ -5,7 +5,7 @@ episodes. Pinned revisions: `experiments/libero/baselines/local-baseline.json`.
 
 | Where | Success | Notes |
 | --- | --- | --- |
-| Laptop (`/home/lab/miniforge3/envs/smolvla`) | 39/100 | ~9668 s serial |
+| Laptop (`/home/lab/miniforge3/envs/smolvla`) | 39/100 | ~9668 s serial; raw: `out/libero/smolvla/vanilla/libero10-full-20260930/` |
 | Sol A100 array `64364739` | 31/100 | per-task: [full-array-64364739.json](smolvla_libero/full-array-64364739.json) |
 
 One run each, so the 8-point gap alone doesn't indicate a mismatch.

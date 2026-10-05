@@ -121,7 +121,7 @@ def search(iters=80, pop=256, elite=24, seed=0):
     rng = np.random.default_rng(seed)
     mu, sd = (LOW + HIGH) / 2, (HIGH - LOW) / 3
     best, best_s = None, -np.inf
-    output_path("baoding").mkdir(parents=True, exist_ok=True)
+    output_path("scripted/baoding").mkdir(parents=True, exist_ok=True)
     with Pool(16) as pool:
         for it in range(iters):
             X = np.clip(mu + sd * rng.standard_normal((pop, len(mu))), LOW, HIGH)
@@ -131,7 +131,7 @@ def search(iters=80, pop=256, elite=24, seed=0):
             if S[idx[-1]] > best_s:
                 best, best_s = X[idx[-1]].copy(), S[idx[-1]]
             print(f"iter {it}: best {S.max():.2f} mean elite {S[idx].mean():.2f} overall {best_s:.2f}", flush=True)
-            np.save(str(output_path('baoding/best.npy')), best)
+            np.save(str(output_path('scripted/baoding/best.npy')), best)
     print("PARAMS =", np.round(best, 3).tolist())
     return best
 

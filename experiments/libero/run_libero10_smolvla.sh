@@ -27,7 +27,7 @@ POLICY="${POLICY:-HuggingFaceVLA/smolvla_libero}"
 EPISODES="${EPISODES:-10}"
 TASK_IDS="${TASK_IDS:-}"
 RUN_ID="${RUN_ID:-$(date -u +%Y%m%dT%H%M%SZ)-$$}"
-OUTPUT_DIR="${OUTPUT_DIR:-$(python -c 'from platforms.paths import output_path; print(output_path())')/libero10-smolvla-$RUN_ID}"
+OUTPUT_DIR="${OUTPUT_DIR:-$(python -c 'from platforms.paths import output_path; print(output_path("libero/smolvla/vanilla"))')/libero10-$RUN_ID}"
 SEED="${SEED:-1000}"
 EPISODE_LENGTH="${EPISODE_LENGTH:-}"
 

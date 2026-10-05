@@ -12,7 +12,7 @@ def main():
     args = parser.parse_args()
     array_id = args.array_id
     assert array_id.isdecimal(), array_id
-    root = output_path()
+    root = output_path('smolvla', 'vanilla')
     summary = {
         'array_job_id': array_id,
         'suite': 'libero_10',
@@ -46,7 +46,7 @@ def main():
     summary['pc_success'] = 100 * summary['n_success'] / summary['n_episodes']
     summary['verified_videos'] = sum(t['verified_videos'] for t in summary['tasks'])
     assert summary['n_episodes'] == summary['verified_videos'] == 100
-    out = args.output_dir or root / f'libero10-full-array-{array_id}'
+    out = args.output_dir or root / f'libero10-array-{array_id}'
     out.mkdir(parents=True, exist_ok=False)
     (out / 'summary.json').write_text(json.dumps(summary, indent=2) + '\n')
     print(json.dumps(summary, indent=2))

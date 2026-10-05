@@ -18,7 +18,7 @@ from robotics.sim import Sim
 p = argparse.ArgumentParser()
 p.add_argument("--params", default=str(output_path('rl/pen/best_params.pkl')))
 p.add_argument("--episodes", type=int, default=10)
-p.add_argument("--video", default=str(output_path('rl/pen.mp4')))
+p.add_argument("--video", default=str(output_path('rl/pen/pen.mp4')))
 p.add_argument("--viewer", action="store_true")
 p.add_argument("--condim", type=int, default=3)
 a = p.parse_args()

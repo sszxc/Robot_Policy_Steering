@@ -12,7 +12,7 @@
       "pc_success": 0.0,
       "eval_s": 2338.530261516571,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task0-64364739_0"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task0-64364739_0"
     },
     {
       "task_id": 1,
@@ -22,7 +22,7 @@
       "pc_success": 30.0,
       "eval_s": 2136.7568957805634,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task1-64364739_1"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task1-64364739_1"
     },
     {
       "task_id": 2,
@@ -32,7 +32,7 @@
       "pc_success": 20.0,
       "eval_s": 2050.1750798225403,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task2-64364739_2"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task2-64364739_2"
     },
     {
       "task_id": 3,
@@ -42,7 +42,7 @@
       "pc_success": 70.0,
       "eval_s": 1513.2800824642181,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task3-64364739_3"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task3-64364739_3"
     },
     {
       "task_id": 4,
@@ -52,7 +52,7 @@
       "pc_success": 0.0,
       "eval_s": 2339.742448091507,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task4-64364739_4"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task4-64364739_4"
     },
     {
       "task_id": 5,
@@ -62,7 +62,7 @@
       "pc_success": 60.0,
       "eval_s": 1529.2802164554596,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task5-64364739_5"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task5-64364739_5"
     },
     {
       "task_id": 6,
@@ -72,7 +72,7 @@
       "pc_success": 40.0,
       "eval_s": 1901.8978037834167,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task6-64364739_6"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task6-64364739_6"
     },
     {
       "task_id": 7,
@@ -82,7 +82,7 @@
       "pc_success": 30.0,
       "eval_s": 2083.907645702362,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task7-64364739_7"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task7-64364739_7"
     },
     {
       "task_id": 8,
@@ -92,7 +92,7 @@
       "pc_success": 10.0,
       "eval_s": 2387.1479318141937,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task8-64364739_8"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task8-64364739_8"
     },
     {
       "task_id": 9,
@@ -102,7 +102,7 @@
       "pc_success": 50.0,
       "eval_s": 1907.0406892299652,
       "verified_videos": 10,
-      "output_dir": "/scratch/xzhan742/thesis/results/libero10-task9-64364739_9"
+      "output_dir": "/scratch/xzhan742/thesis/results/smolvla/vanilla/libero10-task9-64364739_9"
     }
   ],
   "n_episodes": 100,

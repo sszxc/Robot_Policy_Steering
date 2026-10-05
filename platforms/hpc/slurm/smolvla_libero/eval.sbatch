@@ -33,9 +33,9 @@ esac
 libero_runtime
 ROOT="$THESIS_DATA_ROOT"
 if [[ "$MODE" == task ]]; then
-  export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/libero10-task${TASK_INDEX}-${SLURM_ARRAY_JOB_ID}_${TASK_INDEX}"
+  export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/smolvla/vanilla/libero10-task${TASK_INDEX}-${SLURM_ARRAY_JOB_ID}_${TASK_INDEX}"
 else
-  export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/libero10-${MODE}-${SLURM_JOB_ID}"
+  export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/smolvla/vanilla/libero10-${MODE}-${SLURM_JOB_ID}"
 fi
 hostname
 nvidia-smi

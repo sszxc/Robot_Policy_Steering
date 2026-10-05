@@ -19,7 +19,7 @@ p = argparse.ArgumentParser()
 p.add_argument("--params", default=str(output_path('rl/baoding/best_params.pkl')))
 p.add_argument("--period", type=float, default=16.0)
 p.add_argument("--episodes", type=int, default=5)
-p.add_argument("--video", default=str(output_path('rl/baoding.mp4')))
+p.add_argument("--video", default=str(output_path('rl/baoding/baoding.mp4')))
 p.add_argument("--viewer", action="store_true")
 a = p.parse_args()
 

@@ -20,7 +20,7 @@ p = argparse.ArgumentParser()
 p.add_argument("--params", default=str(output_path('rl/rubik/params.pkl')))
 p.add_argument("--episodes", type=int, default=5)
 p.add_argument("--video_episodes", type=int, default=2)
-p.add_argument("--video", default=str(output_path('rl/rubik.mp4')))
+p.add_argument("--video", default=str(output_path('rl/rubik/rubik.mp4')))
 p.add_argument("--viewer", action="store_true")
 a = p.parse_args()
 

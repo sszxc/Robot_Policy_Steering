@@ -16,7 +16,7 @@ Args: episodes per task, batch size per task (must divide episodes). Batch size
 changes policy sampling, so keep it fixed across comparisons. Request:
 htc/public, 1 A100, 12 CPU, 64 G, 4 h.
 
-Outputs in `/scratch/xzhan742/thesis/results/libero-object-parallel-JOB_ID/`:
+Outputs in `/scratch/xzhan742/thesis/results/smolvla/vanilla/liberoobj-parallel-JOB_ID/`:
 `task-N/` (eval + videos), `summary.json` (success, episodes/min; only if all
 tasks pass), `task-status.tsv`, `logs/task-N.{out,err}`, and `resources/`
 (`gpu.csv` sampled every 5 s, `processes.csv`, `gpu-start.txt`).
