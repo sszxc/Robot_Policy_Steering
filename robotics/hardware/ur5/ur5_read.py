@@ -2,11 +2,10 @@
 
 def main():
     import argparse
-    import os
-    from platforms.paths import platform_config
+    from platforms.paths import ur5_ip
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ip", default=os.environ.get("THESIS_UR5_IP", platform_config().get("ur5_ip", "192.168.1.132")))
+    parser.add_argument("--ip", default=ur5_ip())
     args = parser.parse_args()
 
     from rtde_receive import RTDEReceiveInterface

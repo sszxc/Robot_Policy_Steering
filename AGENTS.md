@@ -19,7 +19,7 @@ There's a remote supercomputer available for use. Start with `docs/ASU_Sol_HPC_q
 Repo root: ~/Coding/thesis
 Use Python env: /scratch/xzhan742/thesis/envs/smolvla-libero-py312-v3
 Data root: /scratch/xzhan742/thesis
-
+Note that remote resources are precious. Please make the most of the resources you've requested, especially the GPU VRAM.
 
 # Code Structure
 This project currently has only one user and is in a state of agile development. If we need to refactor or adjust the APIs, we don't have to worry about backwards compatibility.

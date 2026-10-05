@@ -32,10 +32,11 @@ def capture(args):
         "python": sys.version,
         "packages": packages,
         "config": {
-            "suite": "libero_10", "control_mode": "relative", "batch_size": 1,
+            "suite": args.suite, "control_mode": "relative", "batch_size": args.batch_size,
             "policy": args.policy, "episodes_per_task": args.episodes,
             "task_ids": json.loads(args.task_ids) if args.task_ids else None,
             "seed": args.seed, "episode_length": args.episode_length or None,
+            "init_state_offset": args.init_state_offset,
             "output_dir": str(args.output_dir.resolve()),
         },
         "reference_baseline": json.loads(baseline.read_text()),
@@ -54,6 +55,9 @@ def main():
     parser.add_argument("--seed", type=int, default=1000)
     parser.add_argument("--episode-length", default="")
     parser.add_argument("--model-paths")
+    parser.add_argument("--suite", default="libero_10")
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--init-state-offset", type=int, default=0)
     args = parser.parse_args()
     record = capture(args)
     args.output_dir.mkdir(parents=True, exist_ok=False)

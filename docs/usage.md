@@ -115,7 +115,7 @@ python -m robotics.hardware.ur5.ur5_move_servo --ip 192.168.1.132
 `ur5_read` prints joint/TCP state. `ur5_move` executes the existing TCP circle
 and returns to its starting pose. `ur5_move_servo` executes the existing joint
 sine cycle using the UR5 CB3 example's 125 Hz period. Choose the device address
-with `--ip`, `THESIS_UR5_IP`, or `platforms/local/config.local.json`.
+with `--ip` or `THESIS_UR5_IP` (default `192.168.1.132`).
 
 ## SmolVLA / LIBERO
 

@@ -6,8 +6,8 @@ settings. Both machines use the same Git commit but separate Python environments
 
 ## Directory tree
 
-`[future]` describes planned locations, not empty implementations.
-`[ignored]` describes local/runtime content excluded from Git.
+`[ignored]` describes local/runtime content excluded from Git. Planned work
+is tracked in `TODO.md`, not as empty directories.
 
 ```text
 thesis/
@@ -16,39 +16,27 @@ thesis/
 ├── TODO.md
 ├── pyproject.toml
 ├── research/
-│   ├── control/                         [future] layers and insertion adapters
-│   ├── adaptation/                      [future] z optimization
-│   ├── policies/prepare_policy.py
+│   ├── pretrained/prepare_policy.py     pinned pretrained-policy preparation
 │   └── evaluation/
 │       ├── aggregate_eval.py
 │       ├── verify_eval.py
 │       └── provenance.py
 ├── robotics/
 │   ├── sim/                             scenes, controllers, viewer
-│   ├── hardware/
-│   │   ├── ur5/                         RTDE examples with explicit main()
-│   │   └── hx5/                         [future] hand integration
+│   ├── hardware/ur5/                    RTDE examples with explicit main()
 │   ├── teleop/                          Leap, retargeting and replay
-│   ├── data/                            [future] collection/conversion
 │   └── policies/
 │       ├── scripted/
-│       ├── rl/                          MJX envs, training and evaluation
-│       └── il/                          [future] simple imitation policies
+│       └── rl/                          MJX envs, training and evaluation
 ├── experiments/
-│   ├── libero/
-│   │   ├── run_libero10_smolvla.sh
-│   │   ├── baselines/local-baseline.json
-│   │   └── control_layers/              [future] comparison configurations
-│   └── robotics/                        [future] IL/VLA/hardware experiments
+│   └── libero/
+│       ├── run_libero10_smolvla.sh
+│       ├── baselines/local-baseline.json
+│       └── object_parallel/             self-contained: sh, sbatch, scripts, README
 ├── platforms/
 │   ├── paths.py                         resource and runtime path resolution
-│   ├── local/
-│   │   ├── config.json
-│   │   └── config.local.json.example
 │   ├── hpc/
-│   │   ├── config.json
-│   │   ├── config.local.sh.example
-│   │   ├── runtime.sh
+│   │   ├── runtime.sh                   scratch paths and Python env
 │   │   ├── checks/gpu_preflight.py
 │   │   └── slurm/smolvla_libero/         setup/assets/eval/array/aggregate
 │   └── environments/
@@ -89,14 +77,16 @@ thesis/
 
 ## Boundaries
 
-`research` owns control layers, latent optimization and pretrained-policy adapters.
+`research` owns control layers, latent optimization and pretrained-policy adapters
+(currently only `pretrained/` and shared LIBERO evaluation tools).
 `robotics` owns the physical system, its simulation and simple scripted/RL/IL
 policies. `experiments` owns benchmark protocols and combinations of methods,
-models and environments. `platforms` owns execution environments and launchers.
+models and environments; each experiment keeps its own launchers and scripts in
+one directory. `platforms` owns only shared runtime settings, environment records
+and checks.
 
-Keep LIBERO-specific task configuration in experiments. Add future real-data VLA
-fine-tuning experiments under `experiments/robotics`, reusing LeRobot and research
-code. Do not force LIBERO and UR5/HX5 into a common environment API before there
+Keep LIBERO-specific task configuration in experiments. Real-data VLA fine-tuning
+experiments will reuse LeRobot and research code. Do not force LIBERO and UR5/HX5 into a common environment API before there
 is a concrete integration need. Adapt observations and actions explicitly then.
 
 Keep LeRobot changes in its subtree and separate commits. Preserve ROS workspace
@@ -111,17 +101,15 @@ configuration are resolved from the editable checkout; distributing a standalone
 wheel with bundled robot assets is outside this setup.
 
 `platforms/paths.py` resolves the checkout from its own installed location, or
-`THESIS_REPO_ROOT`. `THESIS_PLATFORM` selects `local` (default) or `hpc`.
-Tracked `config.json` supplies defaults; ignored `config.local.json` supplies
-machine overrides. `THESIS_PLATFORM_CONFIG` selects an explicit override file.
-`THESIS_DATA_ROOT`, `THESIS_OUTPUT_ROOT` and `THESIS_UR5_IP` override the relevant
-settings. Relative configured paths resolve from the checkout. Explicit CLI
-file arguments remain relative to the caller's working directory.
+`THESIS_REPO_ROOT`. Environment variables set machine paths, with defaults for the
+laptop: `THESIS_DATA_ROOT` (`data`), `THESIS_OUTPUT_ROOT` (`out`) and
+`THESIS_UR5_IP` (`192.168.1.132`). Relative paths resolve from the checkout.
+Explicit CLI file arguments remain relative to the caller's working directory.
 
-HPC shell jobs source `runtime.sh`, with optional ignored `config.local.sh`
-overrides. It exports scratch paths and `THESIS_PYTHON_ENV`, then enters the
-checkout. Slurm header paths and resources are submission settings: override
-them through `sbatch` flags if needed; shell variables cannot expand in headers.
+HPC shell jobs source `runtime.sh`, which exports the scratch values of these
+variables and `THESIS_PYTHON_ENV`, then enters the checkout. Slurm header paths
+and resources are submission settings: override them through `sbatch` flags if
+needed; shell variables cannot expand in headers.
 
 Local outputs remain in `out/`, datasets in `data/`. HPC data, models, caches,
 environments and outputs remain under `/scratch/xzhan742/thesis`. Record versions
@@ -150,7 +138,7 @@ rollout result. Important scratch outputs require a separate durable backup.
 | `teleop/` | `robotics/teleop/`, with UR5 scripts in `robotics/hardware/ur5/` |
 | `mujoco/` | `assets/mujoco/` |
 | `hpc/smolvla_libero/*.sbatch` | `platforms/hpc/slurm/smolvla_libero/` |
-| HPC generic Python tools | `research/policies/`, `research/evaluation/` |
+| HPC generic Python tools | `research/pretrained/`, `research/evaluation/` |
 | HPC GPU preflight | `platforms/hpc/checks/` |
 | `lerobot/run_libero10_smolvla.sh` | `experiments/libero/run_libero10_smolvla.sh` |
 | `USAGE.md`, `NOTES.md`, `LEROBOT_MAINTENANCE.md` | `docs/` |

@@ -77,9 +77,11 @@ sbatch platforms/hpc/slurm/smolvla_libero/aggregate.sbatch ARRAY_JOB_ID
 ```
 
 脚本从 Slurm 指定的仓库工作目录加载 `platforms/hpc/runtime.sh`。
-机器路径覆盖模板是 `platforms/hpc/config.local.sh.example`；Slurm header
+数据/输出/环境路径在 `runtime.sh` 中设置；Slurm header
 路径和资源通过 `sbatch` 参数覆盖。LIBERO 的通用入口是
 `experiments/libero/run_libero10_smolvla.sh`，结果目录必须是新目录。
+Object 单卡并发实验见
+`experiments/libero/object_parallel/README.md`。
 重汇总旧任务时可使用 `python -m research.evaluation.aggregate_eval ARRAY_JOB_ID
 --output-dir NEW_DIRECTORY`，保留原结果。
 

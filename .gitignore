@@ -21,6 +21,4 @@ __pycache__/
 *.egg-info/
 /build/
 /dist/
-/platforms/**/config.local.json
-/platforms/hpc/config.local.sh
 /experiments/libero/.libero/

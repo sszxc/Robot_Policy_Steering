@@ -56,7 +56,7 @@ fi
 hostname
 nvidia-smi
 git rev-parse HEAD
-python -m research.policies.prepare_policy
+python -m research.pretrained.prepare_policy
 export POLICY="$ROOT/models/smolvla-libero-local"
 export MODEL_PATHS_MANIFEST="$ROOT/manifests/model-paths.json"
 
