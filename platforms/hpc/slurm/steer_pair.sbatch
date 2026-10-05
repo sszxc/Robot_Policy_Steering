@@ -21,6 +21,7 @@
 set -euo pipefail
 source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 libero_runtime
+export TMPDIR=$(mktemp -d /tmp/steer-XXXXXX)  # vector-env forkserver sockets fail on scratch
 hostname
 nvidia-smi
 python -m research.pretrained.prepare_policy
