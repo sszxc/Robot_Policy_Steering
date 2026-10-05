@@ -119,7 +119,9 @@ task, never used for selection) gains most (u4 +18/−0); t3 is hurt (u4 −18/+
 Effects are partly task-general but a single z is not a universal improvement → task/context-
 conditioned z is needed for a "policy adaptation" use.
 
-T7_PLACEHOLDER
+Replication on t7 (local, random W): small grid (scales 0.5, 1 × 8 dirs × inits 0–7, z=0 0.44)
+→ top-2 picks validated on inits 30–49 × 2 reps (n=40 paired): z=0 0.50 → d1 s=0.5 **0.75**
+(11/1, p=0.006), d2 s=1 0.68 (13/6, p=0.17).
 
 ## Landscape: plane scan on t0 (random W, z = a·u0 + b·u4, inits 0–7, z=0: 0.38)
 
