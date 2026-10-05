@@ -12,7 +12,7 @@ The final hardware experiment for this project will use a UR5 (not a UR5e) robot
 
 # Computing Environment
 Small validation experiments can be run locally.
-Use Python: /home/lab/miniforge3/bin/python
+Use Python: /home/lab/miniforge3/envs/vla-libero/bin/python
 
 
 There's a remote supercomputer available for use. Start with `docs/ASU_Sol_HPC_quick.md` for common commands; consult `docs/ASU_Sol_HPC_reference.md` for details and `skills/ASU_Sol_HPC` for task-specific guidance. Prefer current cluster queries over generic skill defaults. My asurite ID is: `xzhan742`.
