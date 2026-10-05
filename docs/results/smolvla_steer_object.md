@@ -80,7 +80,70 @@ Unimodal along each line; random W has a wide plateau, PCA W a narrow window (|s
 - Line-scan pick, t0 random u0 (s=1), 3 noise seeds, n=120 paired: z=0 0.44 → 0.62,
   31 wins / 10 losses, sign test p=0.0015. 2·u0: 0.625 (seed 1000). −u1: 0.00 (0 wins / 20 losses).
 
-TODO: grid picks (top-2 per task/W), plane scan.
+- Grid picks (top-2 of 48 (dir, scale) per task/W by success on inits 0–9; `val/selection.json`),
+  held-out inits 10–49 × 2 noise reps, n=80 paired with z=0:
+
+| task | z=0 | W | pick (dir, s) | grid | held-out | wins/losses | sign p |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| t0 | 0.39 | random | 4, +1 | 0.9 | **0.78** | 36/5 | 8e-7 |
+| t0 | | random | 0, +2 | 0.8 | 0.64 | 25/5 | 3e-4 |
+| t0 | | pca | 1, +0.5 | 0.9 | **0.80** | 34/1 | 2e-9 |
+| t0 | | pca | 7, −1 | 0.8 | 0.78 | 34/3 | 1e-7 |
+| t9 | 0.81 | random | 2, +0.5 | 0.9 | **0.93** | 10/1 | 0.012 |
+| t9 | | random | 4, +0.5 | 0.8 | 0.81 | 2/2 | 1 |
+| t9 | | pca | 7, +0.5 | 0.9 | **0.93** | 10/1 | 0.012 |
+| t9 | | pca | 7, +1 | 0.9 | 0.83 | 12/11 | 1 |
+
+  One round of random search over z already finds gains that generalize to unseen inits and
+  noise (t0 roughly doubles); in-sample grid numbers overestimate (winner's curse): the top
+  pick holds everywhere, second picks only on t0. Both W reach the same level.
+
+What the t0 picks change (held-out, from eef/gripper state): z=0 failures are mostly missed
+grasps — 92% of failed episodes close the fingers on air (width < 1 cm) at least once; such
+empty closes occur in 69% of all z=0 episodes vs 16% (random d4, +1) and 17% (PCA d1, +0.5).
+(The 6 cm "closed" threshold in `analyze.py` is below the soup can's width, so its grasp-time
+column is not meaningful for t0.)
+
+## Cross-task transfer (random W; u0, u4 at s=1 picked on t0; inits 10–29 × 2 reps, n=40/task)
+
+Same W and directions on every task, so a z found on t0 can be applied as is:
+
+| task | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| z=0 | .45 | .75 | 1.0 | .90 | .90 | .95 | .93 | .33 | .85 | .85 |
+| u0 | .55 | .93 | 1.0 | .75 | .95 | .82 | .95 | .62 | .97 | .85 |
+| u4 | .75 | .80 | .97 | .47 | .97 | .82 | .95 | .78 | .95 | .82 |
+
+Paired over all tasks: u0 43 wins / 23 losses (p=0.019), u4 53/37 (p=0.11). t7 (the other low
+task, never used for selection) gains most (u4 +18/−0); t3 is hurt (u4 −18/+1), t5 mildly.
+Effects are partly task-general but a single z is not a universal improvement → task/context-
+conditioned z is needed for a "policy adaptation" use.
+
+T7_PLACEHOLDER
+
+## Landscape: plane scan on t0 (random W, z = a·u0 + b·u4, inits 0–7, z=0: 0.38)
+
+| a \ b | −1 | 0 | 0.5 | 1 | 2 |
+| --- | --- | --- | --- | --- | --- |
+| −1 | 0.00 | 0.38 | 0.50 | 0.75 | 0.75 |
+| 0 | 0.00 | (0.38) | 0.75 | 0.88 | 0.50 |
+| 0.5 | 0.25 | 0.75 | 0.62 | 0.88 | 0.50 |
+| 1 | 0.38 | 0.88 | 0.75 | 0.88 | 0.12 |
+| 2 | 0.25 | 0.75 | 0.75 | 0.62 | 0.00 |
+
+A broad, smooth ridge (0.75–0.88 over a ∈ [0, 2], b ∈ [0.5, 1]) with failure toward b = −1 and
+large |z|: friendly to local search / CEM with a norm bound.
+
+## Style without failure (grid, successful episodes only)
+
+t2 z=0 successful episodes take 122 ± 10 steps. At ~0.9 success, PCA dirs 0/4 give 107 steps at
+s=+1 and 154/165 at s=−1 (monotone, sign-odd: a speed knob); across directions successful
+episode length spans 101–185 steps. Random W directions change length less systematically.
+
+Held-out check (t2, PCA, inits 10–29, paired, `val-t2-speed-pca`): z=0 1.00 success, 119 steps.
+−u0 / −u4: 1.00 success, +29 / +32 steps (Wilcoxon p ≈ 9e-5); +u0 / +u4: 0.80 / 0.85 success,
+−11 / −9 steps on episodes where both succeed (p = 0.007 / 0.04). Slowing is free, speeding up
+costs success.
 
 ## Figures
 
@@ -97,4 +160,27 @@ Regenerate with `python -m research.plot_steer`.
 
 ## Takeaways
 
-TODO
+1. z → FiLM on the action expert is a real control space, not just noise: from |s| ≈ 1 the
+   trajectory change exceeds flow-noise resampling, it is partly consistent across init states,
+   directions differ reliably (overdispersion 2–6), and which directions are harmful is shared
+   across tasks.
+2. The usable region is a bounded ball. Success is an inverted U in |z|: s ≤ 1 (median open-loop
+   |Δa0| ≲ 0.1, chunk |Δa| ≲ 0.15–0.2) is usable, s ≥ 2 mostly breaks the policy, s = 4 always.
+   Open-loop chunk |Δa| predicts closed-loop failure (ρ ≈ −0.86) → a cheap, sim-free trust region
+   or normalization for z before optimization.
+3. Reachability/optimizability looks good: one round of random search over 48 candidates on 10
+   inits gives held-out gains (t0 0.39 → 0.78–0.80, t9 0.81 → 0.93); success along lines and the
+   2-D plane is unimodal and smooth. CEM over a norm-bounded z should be sample-efficient; the
+   main risk is selection noise → score candidates with paired noise, several inits, and keep a
+   held-out set.
+4. Random vs PCA W: similar best-case gains. PCA has a narrower safe window (fails by |s| ≈ 1.5),
+   heavier open-loop tails and a more sign-odd closed-loop response; its directions read more
+   like knobs (validated speed knob on t2: slow +30 steps at no cost, fast −10 steps at −15–20%
+   success). Random W has the wider plateau.
+5. Evaluation for later optimization: paired-noise success on held-out inits (primary), paired
+   effect/noise ratio and main-effect fraction (controllability), open-loop |Δa| (budget).
+   Per-init best-of-K is useless here (8 noise reps at z=0 already reach 0.9–1.0).
+
+Caveats: one W seed per scheme, d=8 and layers 7,15,23,31 fixed, libero_object only, grid on
+10 inits; z=0 rates differ between laptop and Sol (e.g. t9 5/8 local vs 0.81 held-out on Sol),
+so comparisons are always paired within one machine.
