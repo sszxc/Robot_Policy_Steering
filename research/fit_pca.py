@@ -13,10 +13,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     rollout.add_args(parser)
     parser.add_argument("--layers", default="7,15,23,31")
-    parser.add_argument("--episodes", type=int, default=24, help="init states 0..episodes-1")
+    parser.add_argument("--episodes", type=int, default=24, help="init states init_start..init_start+episodes-1")
+    parser.add_argument("--init-start", type=int, default=0)
+    parser.add_argument("--reps", type=int, default=1, help="noise reps per init (seeded as in run.py)")
     parser.add_argument("--obs-every", type=int, default=20, help="keep policy inputs every N steps (openloop.py)")
     args = parser.parse_args()
-    assert args.episodes % args.batch_size == 0, "episodes must be a multiple of batch size"
+    eps = [(r, j) for r in range(args.init_start, args.init_start + args.episodes) for j in range(args.reps)]
+    assert len(eps) % args.batch_size == 0, "episodes * reps must be a multiple of batch size"
     layers = [int(l) for l in args.layers.split(",")]
     out = rollout.new_run_dir(args, f"pca-{args.suite}-t{args.task_id}")
     policy, env, procs = rollout.load(args)
@@ -36,9 +39,10 @@ def main():
     for l in layers:
         expert.layers[l].mlp.register_forward_hook(make_hook(l))
     successes, steps, inputs = [], [], []
-    for start in range(0, args.episodes, args.batch_size):
-        ids = range(start, start + args.batch_size)
-        res = rollout.run_batch(policy, env, procs, ids, args.seed, obs_every=args.obs_every)
+    for start in range(0, len(eps), args.batch_size):
+        batch = eps[start:start + args.batch_size]
+        res = rollout.run_batch(policy, env, procs, [r for r, _ in batch], args.seed, obs_every=args.obs_every,
+                                noise_seeds=[args.seed + r + 1000 * j for r, j in batch])
         successes += res["success"].tolist()
         steps += res["steps"].tolist()
         inputs += res["inputs"]

@@ -23,7 +23,7 @@ def parse_args():
     parser.add_argument("--alpha", type=float, default=0.1)
     parser.add_argument("--w", default="random", help='"random" or a fit_pca.py pca.pt path')
     parser.add_argument("--w-seed", type=int, default=0)
-    parser.add_argument("--n-z", type=int, default=4, help="random directions u ~ N(0, I)")
+    parser.add_argument("--n-z", type=int, default=4, help="orthonormal random directions u_k (≤ dim), ‖u_k‖ = √dim")
     parser.add_argument("--scales", default="1", help="comma list; z = scale * u for each u")
     parser.add_argument("--zero-reps", type=int, default=1, help="z=0 episodes per init (noise reps); 0 skips z=0")
     parser.add_argument("--z-reps", type=int, default=1, help="noise reps per init for z≠0")
@@ -75,10 +75,17 @@ def check(args, policy, env, procs, attach):
     print("CHECK PASSED" if ok else "CHECK FAILED")
 
 
+def directions(n, dim, seed):
+    """n ≤ dim orthonormal random directions [n, dim], each scaled to norm √dim (≈ ‖N(0, I)‖)."""
+    assert n <= dim, "at most dim orthonormal directions"
+    q, r = np.linalg.qr(np.random.default_rng(seed).standard_normal((dim, dim)))
+    return (q * np.sign(np.diag(r))).T[:n] * dim**0.5
+
+
 def plan(args, dim):
-    """Z rows: 0 = zero, then scale * u_k for each scale and direction u_k ~ N(0, I).
+    """Z rows: 0 = zero, then scale * u_k for each scale and direction u_k (see directions).
     Episodes (z row, init, rep): z=0 for zero_reps reps, others z_reps; noise is paired by (init, rep)."""
-    U = np.load(args.z_file) if args.z_file else np.random.default_rng(args.z_seed).standard_normal((args.n_z, dim))
+    U = np.load(args.z_file) if args.z_file else directions(args.n_z, dim, args.z_seed)
     args.n_z = len(U)
     scales = [float(c) for c in args.scales.split(",")]
     Z = np.concatenate([np.zeros((1, dim))] + [c * U for c in scales])

@@ -144,7 +144,7 @@ t9 0.66, t2 0.99.</p>
 </tr>
 </tbody>
 </table>
-<p>(±c means are over different directions, so +1 vs −1 differences are direction sampling, not sign.)</p>
+<p>(±c use the same 8 directions u_k with the sign flipped, so +1 vs −1 is a sign effect. Note the u_k are not orthogonal (e.g. cos(u0, u4) = 0.78, cos(u4, u5) = 0.81, cos(u2, u7) = −0.82) and all have a positive projection on their mean, which likely explains why +u beats −u on all 8 directions for t0 random W: the 8 directions are not 8 independent samples.)</p>
 <p>Other metrics (<code>hpc/grid_metrics.json</code>, from <code>research/analyze.py</code>):</p>
 <ul>
 <li>Trajectory effect (eef xyz at steps 20…200, paired with z=0) vs noise effect (z=0 rep j vs
@@ -532,7 +532,7 @@ costs success.</p>
    effect/noise ratio and main-effect fraction (controllability), open-loop |Δa| (budget).
    Per-init best-of-K is useless here (8 noise reps at z=0 already reach 0.9–1.0).</li>
 </ol>
-<p>Caveats: u_k not normalized (see grid section), one W seed per scheme, d=8 and layers 7,15,23,31 fixed, libero_object only, grid on
+<p>Caveats: u_k neither normalized nor orthogonal (see grid section; u0 and u4 are only 39° apart, so the a·u0 + b·u4 plane scan is close to 1-D and the two transfer z are nearly the same direction), one W seed per scheme, d=8 and layers 7,15,23,31 fixed, libero_object only, grid on
 10 inits; z=0 rates differ between laptop and Sol (e.g. t9 5/8 local vs 0.81 held-out on Sol),
 so comparisons are always paired within one machine.</p>
 </body></html>

@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from research import rollout
+from research.run import directions
 from research.inject import INJECT
 
 
@@ -37,7 +38,7 @@ def main():
     bank = torch.load(args.inputs)
     N = min(args.max_inputs, len(bank["task"]))
     idx = np.random.default_rng(0).choice(len(bank["task"]), N, replace=False)
-    U = torch.tensor(np.random.default_rng(args.z_seed).standard_normal((args.n_z, dim)), dtype=torch.float32)
+    U = torch.tensor(directions(args.n_z, dim, args.z_seed), dtype=torch.float32)
     scales = [float(c) for c in args.scales.split(",")]
     A = 7  # real action dims (the rest is padding to max_action_dim)
     B = args.batch_size
