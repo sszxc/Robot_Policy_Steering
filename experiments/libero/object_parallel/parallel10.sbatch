@@ -25,23 +25,9 @@ export EPISODES="${1:-10}" BATCH_SIZE="${2:-1}" SEED=1000
 (( BATCH_SIZE <= EPISODES && EPISODES % BATCH_SIZE == 0 )) || {
   echo 'BATCH_SIZE must divide EPISODES exactly.' >&2; exit 2;
 }
-module purge
-module load mamba/latest
-source activate "$THESIS_PYTHON_ENV"
-export PYTHONPATH="$THESIS_REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
-export HF_HOME="$THESIS_DATA_ROOT/cache/huggingface"
-export TMPDIR="$THESIS_DATA_ROOT/tmp"
-export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
-export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1
-export MUJOCO_GL=egl PYOPENGL_PLATFORM=egl
-export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-export LIBERO_CONFIG_PATH="$THESIS_DATA_ROOT/config/libero"
-export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-if [[ "${CUDA_VISIBLE_DEVICES:-}" =~ ^[0-9]+$ ]]; then
-  export MUJOCO_EGL_DEVICE_ID="$CUDA_VISIBLE_DEVICES"
-fi
+libero_runtime
 RUN_DIR="$THESIS_OUTPUT_ROOT/libero-object-parallel-${SLURM_JOB_ID:?Run using sbatch}"
-mkdir -p "$THESIS_OUTPUT_ROOT" "$TMPDIR" "$THESIS_DATA_ROOT/manifests"
+mkdir -p "$THESIS_OUTPUT_ROOT"
 mkdir "$RUN_DIR"
 mkdir "$RUN_DIR/logs" "$RUN_DIR/resources"
 hostname

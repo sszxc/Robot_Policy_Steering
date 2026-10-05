@@ -30,28 +30,12 @@ case "$MODE" in
   *) echo "Unknown evaluation mode: $MODE"; exit 2 ;;
 esac
 
-module purge
-module load mamba/latest
-source activate "$THESIS_PYTHON_ENV"
+libero_runtime
 ROOT="$THESIS_DATA_ROOT"
-export HF_HOME="$ROOT/cache/huggingface"
-export PIP_CACHE_DIR="$ROOT/cache/pip"
-export TMPDIR="$ROOT/tmp"
-export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
-export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
-export MUJOCO_GL=egl PYOPENGL_PLATFORM=egl
-export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1
-export LIBERO_CONFIG_PATH="$ROOT/config/libero"
 if [[ "$MODE" == task ]]; then
   export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/libero10-task${TASK_INDEX}-${SLURM_ARRAY_JOB_ID}_${TASK_INDEX}"
 else
   export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/libero10-${MODE}-${SLURM_JOB_ID}"
-fi
-export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:${LD_LIBRARY_PATH:-}"
-mkdir -p "$TMPDIR" "$ROOT/manifests"
-# EGL sees physical GPU indices; robosuite also honors CUDA_VISIBLE_DEVICES.
-if [[ "${CUDA_VISIBLE_DEVICES:-}" =~ ^[0-9]+$ ]]; then
-  export MUJOCO_EGL_DEVICE_ID="$CUDA_VISIBLE_DEVICES"
 fi
 hostname
 nvidia-smi

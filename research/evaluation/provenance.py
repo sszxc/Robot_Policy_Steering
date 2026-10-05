@@ -10,7 +10,7 @@ from pathlib import Path
 from platforms.paths import repo_root
 
 
-def capture(args):
+def record(config):
     root = repo_root()
     git = lambda *cmd: subprocess.check_output(["git", *cmd], cwd=root, text=True).strip()
     return {
@@ -19,14 +19,18 @@ def capture(args):
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "host": platform.node(),
         "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
-        "config": {
-            "suite": args.suite, "policy": args.policy, "episodes_per_task": args.episodes,
-            "task_ids": json.loads(args.task_ids) if args.task_ids else None,
-            "seed": args.seed, "batch_size": args.batch_size,
-            "episode_length": args.episode_length or None,
-            "init_state_offset": args.init_state_offset,
-        },
+        "config": config,
     }
+
+
+def capture(args):
+    return record({
+        "suite": args.suite, "policy": args.policy, "episodes_per_task": args.episodes,
+        "task_ids": json.loads(args.task_ids) if args.task_ids else None,
+        "seed": args.seed, "batch_size": args.batch_size,
+        "episode_length": args.episode_length or None,
+        "init_state_offset": args.init_state_offset,
+    })
 
 
 def main():

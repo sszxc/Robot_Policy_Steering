@@ -7,14 +7,18 @@ UR5 + HX5 robotics stack. Laptop and HPC share the Git checkout, not the Python 
 thesis/
 ├── research/
 │   ├── pretrained/prepare_policy.py   link pinned HF snapshots into an offline policy dir
-│   └── evaluation/                    provenance, verify_eval, aggregate_eval
+│   ├── evaluation/                    provenance, verify_eval, aggregate_eval
+│   ├── rollout.py                     load SmolVLA + LIBERO vec env once; batched episodes per init state
+│   ├── inject/                        z injection configs: attach(policy, **args) -> (dim, set_z)
+│   ├── fit_pca.py                     PCA of expert activations (for expert_film --w)
+│   └── run.py                         steering entry: z=0 vs random z, videos; --check
 ├── experiments/libero/
 │   ├── run_libero10_smolvla.sh        generic lerobot-eval launcher (LIBERO-10)
 │   ├── baselines/local-baseline.json  pinned Hub revisions (policy, backbone, assets)
 │   └── object_parallel/               self-contained: 10 Object tasks on one A100
 ├── platforms/
 │   ├── paths.py                       repo/asset/data/output paths (env-var overrides)
-│   ├── hpc/                           runtime.sh, gpu_preflight.py, slurm/smolvla_libero/*.sbatch
+│   ├── hpc/                           runtime.sh, gpu_preflight.py, slurm/{steer,smolvla_libero/*}.sbatch
 │   └── environments/                  SmolVLA pip constraints, robotics versions
 ├── robotics/
 │   ├── sim/                           MuJoCo scene composition, Sim runner, hand postures, viewer
@@ -43,7 +47,8 @@ Ignored locally: `out/` (outputs), `data/`, `ros2_ws/{build,install,log}`, `.loc
   into an existing env; LeRobot is installed separately in the SmolVLA env.
 - `platforms/paths.py` env vars: `THESIS_REPO_ROOT`, `THESIS_DATA_ROOT` (`data`),
   `THESIS_OUTPUT_ROOT` (`out`), `THESIS_UR5_IP` (`192.168.1.132`). HPC jobs source
-  `platforms/hpc/runtime.sh`, which sets scratch values and `THESIS_PYTHON_ENV`.
+  `platforms/hpc/runtime.sh`, which sets scratch values and `THESIS_PYTHON_ENV`;
+  GPU LIBERO jobs then call its `libero_runtime` (env activation, offline caches, EGL).
 - Each LIBERO run gets a new output dir with `provenance.json` (commit, dirty,
   run args); lerobot's `eval_info.json` is the result.
 - Git holds source, assets, configs, docs and small curated results; never
