@@ -101,6 +101,26 @@ python -m robotics.teleop.replay out/teleop/<file>.npz [--speed 1.0] [--loop] [-
 
 Joint mapping gains/offsets: `GAIN` / `OFFSET` in `robotics/teleop/mapping.py`.
 
+## HX5 real hand (Leap teleop)
+
+The vendor stack runs in the `robotis_hand` container (ROS 2 Jazzy, zenoh); the host talks to it over localhost UDP.
+`robotics/hardware/hx5/bridge.py` runs in the container (thesis is mounted read-only at `/thesis`) and streams
+targets to `hand_r_controller`: clamps to vendor limits, rate-limits (`--max_vel`, 2 rad/s) from the measured pose,
+and stops publishing after `--timeout` (0.2 s) without packets, so the hand holds its last goal.
+
+```bash
+cd ~/Documents/robotis_hand/docker && ./container.sh enter      # one terminal each:
+zenohd
+ros2 launch robotis_hand_bringup hx5_d20_right.launch.py           # add use_mock_hardware:=true for a dry run
+python3 /thesis/robotics/hardware/hx5/bridge.py                    # interactive shell already sets RMW_IMPLEMENTATION
+# host (base env)
+python -m robotics.hardware.hx5.sweep [--joints 1 6] [--amp 0.3]  # sim + real, one joint at a time: compare signs
+python -m robotics.teleop.teleop --real                            # e = start/stop sending to the real hand
+```
+
+The thesis mount is one extra line in `robotis_hand/docker/docker-compose.yml` (`../../thesis:/thesis:ro`);
+after changing the compose file recreate the container: `./container.sh stop` (answer y), then `./container.sh start`.
+
 ## UR5 hardware examples
 
 Use the laptop environment with `ur_rtde`. Importing these modules does not

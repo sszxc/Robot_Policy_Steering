@@ -25,7 +25,7 @@ thesis/
 │   ├── policies/scripted/             one script per hand task
 │   ├── policies/rl/                   MJX envs, brax PPO train/eval
 │   ├── teleop/                        Leap -> hand retargeting, record/replay
-│   └── hardware/ur5/                  ur_rtde examples
+│   └── hardware/                      ur5/ ur_rtde examples; hx5/ real-hand UDP bridge (runs in the robotis_hand container) + sweep
 ├── assets/mujoco/                     hand/arm/object MJCF (UR5e model for now)
 ├── assets/teleop/                     Leap range-of-motion recordings (float32 npz, see teleop/leap_source.py)
 ├── ros2_ws/src/thesis_scene/          UR5 Gazebo + MoveIt (see ros2_ws/CHEATSHEET.md)
