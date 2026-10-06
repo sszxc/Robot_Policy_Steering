@@ -27,6 +27,7 @@ thesis/
 │   ├── teleop/                        Leap -> hand retargeting, record/replay
 │   └── hardware/ur5/                  ur_rtde examples
 ├── assets/mujoco/                     hand/arm/object MJCF (UR5e model for now)
+├── assets/teleop/                     Leap range-of-motion recordings (float32 npz, see teleop/leap_source.py)
 ├── ros2_ws/src/thesis_scene/          UR5 Gazebo + MoveIt (see ros2_ws/CHEATSHEET.md)
 ├── lerobot/                           frozen LeRobot subtree (source + packaging only)
 ├── tests/

@@ -1,7 +1,7 @@
 """Live Leap -> floating HX5 hand in sim, plus a top-down Leap skeleton window (leap_view).
 
 Keys (global, pynput): t = clutch (freeze wrist position; press again to resume from the new hand position),
-r = start/stop recording raw keypoints to out/teleop/<time>.npz, f = Leap view skeleton/dots, q = quit. Closing either window also quits.
+r = start/stop recording raw keypoints + all Leap hand fields (leap_source.hand_info) to out/teleop/<time>.npz, f = Leap view skeleton/dots, q = quit. Closing either window also quits.
 Usage: python -m robotics.teleop.teleop [--scale 1.0] [--alpha 0.5] [--wrist leap|optitrack]
 """
 import argparse
@@ -23,8 +23,8 @@ OUT = output_path("teleop")
 def save(frames):
     OUT.mkdir(parents=True, exist_ok=True)
     path = OUT / time.strftime("%Y%m%d_%H%M%S.npz")
-    t, kp = zip(*frames)
-    np.savez(path, t=np.array(t), kp=np.array(kp))
+    t, kp, info = zip(*frames)
+    np.savez(path, t=np.array(t), kp=np.array(kp), **{k: np.array([i[k] for i in info]) for k in info[0]})
     print(f"saved {len(frames)} frames -> {path}")
 
 
@@ -78,9 +78,9 @@ def main():
             if s is None:
                 offset = None  # hand lost: re-anchor when it returns instead of jumping
             elif s[0] != last_id:
-                last_id, t, kp = s
+                last_id, t, kp, info = s
                 if recording:
-                    frames.append((t, kp))
+                    frames.append((t, kp, info))
                 q = args.alpha * mapping.retarget(kp) + (1 - args.alpha) * q
                 hand_sim.set_fingers(d, q)
                 pos, R = leap_wrist(kp) if args.wrist == "leap" else optitrack_wrist()
