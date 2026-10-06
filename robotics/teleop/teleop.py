@@ -54,6 +54,7 @@ def main():
     print(__doc__)
 
     with mujoco.viewer.launch_passive(m, d) as viewer:
+        hand_sim.set_camera(viewer.cam)
         t0 = time.time()
         while viewer.is_running():
             with lock:
@@ -72,7 +73,9 @@ def main():
                 print("recording" if recording else "recording stopped")
 
             s = src.latest()
-            if s is not None and s[0] != last_id:
+            if s is None:
+                offset = None  # hand lost: re-anchor when it returns instead of jumping
+            elif s[0] != last_id:
                 last_id, t, kp = s
                 if recording:
                     frames.append((t, kp))

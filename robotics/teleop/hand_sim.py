@@ -23,6 +23,12 @@ def build():
     return m, mujoco.MjData(m)
 
 
+def set_camera(cam):
+    """Operator view: behind the hand, looking along +x (away from the operator)."""
+    cam.lookat[:] = (0.5, 0, 0.55)
+    cam.distance, cam.azimuth, cam.elevation = 0.8, 0, -30
+
+
 def set_wrist(d, pos, R):
     d.mocap_pos[0] = pos
     mujoco.mju_mat2Quat(d.mocap_quat[0], np.asarray(R, float).ravel())

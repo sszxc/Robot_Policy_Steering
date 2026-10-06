@@ -40,6 +40,7 @@ def main():
     m, d = hand_sim.build()
     offset = hand_sim.HOME_POS - leap_wrist(kp[0])[0]
     with mujoco.viewer.launch_passive(m, d) as viewer:
+        hand_sim.set_camera(viewer.cam)
         i, clock, sim_t, last = 0, 0.0, 0.0, time.time()
         while viewer.is_running() and not state["quit"]:
             now = time.time()
