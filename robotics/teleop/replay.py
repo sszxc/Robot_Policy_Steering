@@ -57,6 +57,7 @@ def main():
             hand_sim.step_to(m, d, sim_t)
             viewer.sync()
             time.sleep(1 / 60)
+    hand_sim.close_viewer(viewer)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
-"""Live Leap -> floating HX5 hand in sim.
+"""Live Leap -> floating HX5 hand in sim, plus a top-down Leap skeleton window (leap_view).
 
 Keys (global, pynput): t = clutch (freeze wrist position; press again to resume from the new hand position),
-r = start/stop recording raw keypoints to out/teleop/<time>.npz, q = quit.
+r = start/stop recording raw keypoints to out/teleop/<time>.npz, q = quit. Closing either window also quits.
 Usage: python -m robotics.teleop.teleop [--scale 1.0] [--alpha 0.5] [--wrist leap|optitrack]
 """
 import argparse
@@ -13,7 +13,7 @@ import mujoco.viewer
 import numpy as np
 from pynput import keyboard
 
-from robotics.teleop import hand_sim, mapping
+from robotics.teleop import hand_sim, leap_view, mapping
 from robotics.teleop.leap_source import LeapSource
 from robotics.teleop.wrist import leap_wrist, optitrack_wrist
 
@@ -90,12 +90,18 @@ def main():
                     pos = d.mocap_pos[0].copy()
                 hand_sim.set_wrist(d, pos, R)
 
+            status = f"wrist {'tracking' if tracking else 'frozen'}{'  REC' if recording else ''}{'' if s else '  no right hand'}"
+            if not leap_view.show(None if s is None else s[2], status):
+                break
+
             hand_sim.step_to(m, d, time.time() - t0)
             viewer.sync()
             time.sleep(0.005)
 
+    hand_sim.close_viewer(viewer)
     if recording and frames:
         save(frames)
+    leap_view.close()
     src.close()
 
 

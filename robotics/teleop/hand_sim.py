@@ -1,4 +1,6 @@
 """Floating HX5 hand: free joint welded to a mocap body, plus a table and a cube."""
+import threading
+
 import mujoco
 import numpy as np
 
@@ -27,6 +29,14 @@ def set_camera(cam):
     """Operator view: behind the hand, looking along +x (away from the operator)."""
     cam.lookat[:] = (0.5, 0, 0.55)
     cam.distance, cam.azimuth, cam.elevation = 0.8, 0, -30
+
+
+def close_viewer(viewer):
+    """Close a passive viewer and wait for its render thread; exiting while it tears down segfaults in glfw."""
+    viewer.close()
+    for th in threading.enumerate():
+        if "_launch_internal" in th.name:
+            th.join(timeout=5)
 
 
 def set_wrist(d, pos, R):
