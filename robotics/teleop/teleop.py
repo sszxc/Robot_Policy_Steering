@@ -1,7 +1,7 @@
 """Live Leap -> floating HX5 hand in sim, plus a top-down Leap skeleton window (leap_view).
 
 Keys (global, pynput): t = clutch (freeze wrist position; press again to resume from the new hand position),
-r = start/stop recording raw keypoints to out/teleop/<time>.npz, q = quit. Closing either window also quits.
+r = start/stop recording raw keypoints to out/teleop/<time>.npz, f = Leap view skeleton/dots, q = quit. Closing either window also quits.
 Usage: python -m robotics.teleop.teleop [--scale 1.0] [--alpha 0.5] [--wrist leap|optitrack]
 """
 import argparse
@@ -35,7 +35,7 @@ def main():
     ap.add_argument("--wrist", choices=["leap", "optitrack"], default="leap")
     args = ap.parse_args()
 
-    keys = {"t": False, "r": False, "q": False}  # pending presses
+    keys = {"t": False, "r": False, "f": False, "q": False}  # pending presses
     lock = threading.Lock()
 
     def on_press(k):
@@ -50,7 +50,7 @@ def main():
     src = LeapSource("right")
     q = np.zeros(20)
     offset = None  # world wrist pos -> mocap pos; None = recompute on the next frame
-    tracking, recording, frames, last_id = True, False, [], None
+    tracking, recording, frames, last_id, dots = True, False, [], None, False
     print(__doc__)
 
     with mujoco.viewer.launch_passive(m, d) as viewer:
@@ -59,13 +59,15 @@ def main():
         while viewer.is_running():
             with lock:
                 pressed = dict(keys)
-                keys.update(t=False, r=False, q=False)
+                keys.update(t=False, r=False, f=False, q=False)
             if pressed["q"]:
                 break
             if pressed["t"]:
                 tracking = not tracking
                 offset = None
                 print("wrist position", "tracking" if tracking else "frozen")
+            if pressed["f"]:
+                dots = not dots
             if pressed["r"]:
                 if recording and frames:
                     save(frames)
@@ -90,8 +92,8 @@ def main():
                     pos = d.mocap_pos[0].copy()
                 hand_sim.set_wrist(d, pos, R)
 
-            status = f"wrist {'tracking' if tracking else 'frozen'}{'  REC' if recording else ''}{'' if s else '  no right hand'}"
-            if not leap_view.show(None if s is None else s[2], status):
+            status = f"wrist {'tracking' if tracking else 'frozen'}{'' if s else '  no right hand'}"
+            if not leap_view.show(None if s is None else s[2], status, recording, dots):
                 break
 
             hand_sim.step_to(m, d, time.time() - t0)

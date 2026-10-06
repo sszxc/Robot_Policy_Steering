@@ -87,7 +87,7 @@ python -m pytest tests -q
 ## Teleop (Leap Motion -> floating hand)
 
 Needs a display and a Leap device. Keys are read globally (pynput), so the viewer does not need focus.
-`teleop` also opens a top-down Leap skeleton window (`leap_view.py`, from the leapc-python-bindings visualiser); closing either window quits.
+`teleop` also opens a top-down Leap skeleton window (`leap_view.py`, from the leapc-python-bindings visualiser); closing either window quits. Points are coloured by height above the wrist (red near, blue far); `f` toggles skeleton/dots.
 
 ```
 python -m robotics.teleop.teleop [--scale 1.0] [--alpha 0.5] [--wrist leap|optitrack]
