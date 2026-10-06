@@ -19,7 +19,7 @@ def load(run):
     m = d["done"]
     ep = {k: d[k][m] for k in ("ep_z", "ep_init", "ep_rep", "success", "steps", "state")}
     ep["scale"], ep["dir"] = d["scale"][ep["ep_z"]], d["direction"][ep["ep_z"]]
-    ep["w"] = "random" if cfg["w"] == "random" else "pca"
+    ep["w"] = f"random-s{cfg['w_seed']}" if cfg["w"] == "random" else "pca"
     ep["task"] = cfg["task_id"]
     return ep
 
