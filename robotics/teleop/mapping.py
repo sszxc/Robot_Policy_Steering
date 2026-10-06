@@ -1,7 +1,7 @@
 """Joint-space mapping: human keypoints (26x3, see leap_source) -> 20 HX5 joint targets (sim/hand.py order).
 
 Hand frame (human and robot alike): x = palm normal (out of the palm), y = thumb side, z = wrist -> fingers.
-Each output = GAIN * geometric angle + OFFSET, then clipped to the joint range; tune GAIN/OFFSET here.
+Each output = GAIN * geometric angle + OFFSET, then clipped to the joint range; GAIN/OFFSET presets in CALIB.
 """
 import numpy as np
 
@@ -9,8 +9,15 @@ WRIST = 0
 THUMB, INDEX, MIDDLE, RING, PINKY = range(5)
 
 # Per joint, same order as the output (thumb cmc, yaw, pitch, ip, then roll, mcp, pip, dip per finger).
-GAIN = np.ones(20)
-OFFSET = np.zeros(20)
+# (GAIN, OFFSET) presets, fit by calibrate.py on assets/teleop/20261006_rom_*.npz (see its docstring).
+CALIB = {
+    "raw": (np.ones(20), np.zeros(20)),
+    "anchor": (np.array([1.000, 1.000, 2.877, 1.884, 1.706, 1.699, 1.034, 1.994, 2.039, 1.465, 0.998, 1.798, 1.779, 1.432, 1.006, 1.959, 0.878, 1.378, 1.117, 1.708]),
+               np.array([0.000, 0.000, 0.000, 0.000, -0.071, 0.000, 0.000, 0.000, -0.303, 0.000, 0.000, 0.000, -0.148, 0.000, 0.000, 0.000, -0.310, 0.000, 0.000, 0.000])),
+    "full": (np.array([2.527, 1.478, 1.854, 1.775, 2.009, 1.178, 1.044, 2.106, 2.257, 1.120, 1.017, 1.888, 1.957, 1.160, 1.055, 2.072, 1.360, 1.056, 1.173, 1.862]),
+             np.array([-3.110, -0.167, 0.559, 0.091, -0.192, 0.616, -0.014, -0.088, -0.270, 0.473, -0.031, -0.079, -0.101, 0.382, -0.078, -0.090, -0.145, 0.469, -0.078, -0.142])),
+}
+DEFAULT_CALIB = "anchor"
 LO = np.array([-1.571, -1.571, 0, 0] + [-0.611, 0, 0, 0] * 4)
 HI = np.array([1.571, 0, 1.571, 1.571] + [0.611, 2.007, 1.571, 1.571] * 4)
 
@@ -37,8 +44,8 @@ def flex(a, b, axis):
     return np.arctan2(np.cross(a, b) @ axis, a @ b)
 
 
-def retarget(kp):
-    """26x3 keypoints (any frame) -> 20 joint targets (rad)."""
+def angles(kp):
+    """26x3 keypoints (any frame) -> 20 raw geometric joint angles (rad), before GAIN/OFFSET/clip."""
     kp = kp @ hand_frame(kp)  # express everything in the hand frame
     q = np.zeros(20)
 
@@ -65,4 +72,10 @@ def retarget(kp):
         pitch = np.arctan2(p[0], p[2])
         q[4 * f:4 * f + 4] = roll, pitch, flex(s[1], s[2], y), flex(s[2], s[3], y)
 
-    return np.clip(GAIN * q + OFFSET, LO, HI)
+    return q
+
+
+def retarget(kp, calib=DEFAULT_CALIB):
+    """26x3 keypoints (any frame) -> 20 joint targets (rad), with the CALIB[calib] gain/offset."""
+    gain, offset = CALIB[calib]
+    return np.clip(gain * angles(kp) + offset, LO, HI)

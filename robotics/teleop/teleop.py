@@ -2,7 +2,7 @@
 
 Keys (global, pynput): t = clutch (freeze wrist position; press again to resume from the new hand position),
 r = start/stop recording raw keypoints + all Leap hand fields (leap_source.hand_info) to out/teleop/<time>.npz, f = Leap view skeleton/dots, q = quit. Closing either window also quits.
-Usage: python -m robotics.teleop.teleop [--scale 1.0] [--alpha 0.5] [--wrist leap|optitrack]
+Usage: python -m robotics.teleop.teleop [--scale 1.0] [--alpha 0.5] [--wrist leap|optitrack] [--calib anchor|full|raw]
 """
 import argparse
 import threading
@@ -33,6 +33,7 @@ def main():
     ap.add_argument("--scale", type=float, default=1.0, help="wrist translation scale")
     ap.add_argument("--alpha", type=float, default=0.5, help="EMA weight of the new finger target (1 = no filter)")
     ap.add_argument("--wrist", choices=["leap", "optitrack"], default="leap")
+    ap.add_argument("--calib", choices=list(mapping.CALIB), default=mapping.DEFAULT_CALIB, help="mapping gain/offset preset")
     args = ap.parse_args()
 
     keys = {"t": False, "r": False, "f": False, "q": False}  # pending presses
@@ -81,7 +82,7 @@ def main():
                 last_id, t, kp, info = s
                 if recording:
                     frames.append((t, kp, info))
-                q = args.alpha * mapping.retarget(kp) + (1 - args.alpha) * q
+                q = args.alpha * mapping.retarget(kp, args.calib) + (1 - args.alpha) * q
                 hand_sim.set_fingers(d, q)
                 pos, R = leap_wrist(kp) if args.wrist == "leap" else optitrack_wrist()
                 if tracking:

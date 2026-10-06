@@ -8,7 +8,7 @@ NAME = "Leap hand"
 H, W = 500, 700
 FPS = 30  # redraw rate; drawing every loop slows the teleop loop below the Leap rate
 _last = 0.0
-DEPTH_MM = 60  # colour range: wrist height +- this
+DEPTH_MM = 140  # colour range: wrist height +- this
 
 # Keypoint pairs (26-point layout, see leap_source.py): wrist->CMC, finger chains, CMC/MCP knuckle rows.
 BONES = [(0, 1 + 5 * d) for d in range(5)]

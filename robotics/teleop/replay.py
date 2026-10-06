@@ -1,7 +1,7 @@
 """Replay a recording (out/teleop/*.npz) through the current mapping.py in sim.
 
 Keys (global, pynput): space = pause/resume, q = quit.
-Usage: python -m robotics.teleop.replay out/teleop/<file>.npz [--speed 1.0] [--loop] [--fix_wrist]
+Usage: python -m robotics.teleop.replay out/teleop/<file>.npz [--speed 1.0] [--loop] [--fix_wrist] [--calib anchor|full|raw]
 """
 import argparse
 import threading
@@ -21,6 +21,7 @@ def main():
     ap.add_argument("--speed", type=float, default=1.0)
     ap.add_argument("--loop", action="store_true")
     ap.add_argument("--fix_wrist", action="store_true", help="keep the wrist at home, fingers only")
+    ap.add_argument("--calib", choices=list(mapping.CALIB), default=mapping.DEFAULT_CALIB, help="mapping gain/offset preset")
     args = ap.parse_args()
 
     rec = np.load(args.path)
@@ -47,7 +48,7 @@ def main():
             dt = 0.0 if state["pause"] else (now - last) * args.speed
             clock, sim_t, last = clock + dt, sim_t + dt, now
             while i < len(t) and t[i] <= clock:
-                hand_sim.set_fingers(d, mapping.retarget(kp[i]))
+                hand_sim.set_fingers(d, mapping.retarget(kp[i], args.calib))
                 if not args.fix_wrist:
                     pos, R = leap_wrist(kp[i])
                     hand_sim.set_wrist(d, pos + offset, R)
