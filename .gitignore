@@ -22,3 +22,6 @@ __pycache__/
 /build/
 /dist/
 /experiments/libero/.libero/
+
+# LLM endpoint key (research.optimize)
+/.env

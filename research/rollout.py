@@ -78,19 +78,23 @@ def _paired_noise(shape, device):
     return torch.stack([torch.randn(shape[1:], generator=g, device=device) for g in _GENS])
 
 
-def run_batch(policy, env, procs, init_ids, seed, noise_seeds=None, video_envs=(), obs_every=0):
+def run_batch(policy, env, procs, init_ids, seed, noise_seeds=None, video_envs=(), obs_every=0, view_every=0):
     """Sub-env i starts from init state init_ids[i] with flow noise seeded by noise_seeds[i]
     (default seed + init id). Returns success[B], steps[B], action[B, T, A], state[B, T, 8]
     (raw eef pos, axis-angle, gripper qpos; before each action), frames {env index: [T, H, W, 3]} for video_envs and, if
-    obs_every, policy inputs every obs_every steps as a list of per-sample dicts."""
+    obs_every, policy inputs every obs_every steps as a list of per-sample dicts; if view_every, views[B, T', H, 2W, 3]
+    uint8 = upright (agentview | wrist) policy images every view_every steps."""
     init_ids = [int(i) for i in init_ids]
     noise_seeds = [seed + i for i in init_ids] if noise_seeds is None else noise_seeds
     _GENS[:] = [torch.Generator("cuda").manual_seed(int(s)) for s in noise_seeds]
     env.set_attr("init_state_id", init_ids)
     env_pre, env_post, pre, post = procs
-    states, inputs = [], []
+    states, inputs, views = [], [], []
 
     def env_pre_rec(obs):
+        if view_every and len(states) % view_every == 0:
+            cams = [obs[f"observation.images.{k}"].flip(-2, -1) for k in ("image", "image2")]  # raw LIBERO is rotated 180°
+            views.append(torch.cat(cams, -1).mul(255).byte().permute(0, 2, 3, 1).cpu().numpy())
         obs = env_pre(obs)
         states.append(obs["observation.state"].float().cpu())
         return obs
@@ -124,4 +128,5 @@ def run_batch(policy, env, procs, init_ids, seed, noise_seeds=None, video_envs=(
         "state": torch.stack(states, 1).numpy(),
         "frames": {i: f[:steps[i] + 1] for i, f in zip(video_envs, frames)},
         "inputs": samples,
+        "views": np.stack(views, 1) if views else [],
     }
