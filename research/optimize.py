@@ -49,6 +49,7 @@ def parse_args():
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--frames", type=int, default=5, help="frames per rollout image")
     parser.add_argument("--view-every", type=int, default=5, help="capture policy images every N steps")
+    parser.add_argument("--perm", action="store_true", help="per-chain random signed permutation between the optimizer's z and the policy's")
     return parser.parse_args()
 
 
@@ -68,6 +69,8 @@ class Chain:
         self.init, self.rep, self.log = init, rep, log
         self.name = f"i{init}-r{rep}"
         self.seeds = [args.seed + init + 1000 * (rep * args.k + k) for k in range(args.k)]
+        rng = np.random.default_rng([args.seed, init, rep, 7])  # policy z = M @ optimizer z
+        self.M = (np.eye(args.dim)[rng.permutation(args.dim)] * rng.choice([-1, 1], args.dim)) if args.perm else np.eye(args.dim)
         self.cands = [json.loads(l) for l in log.read_text().splitlines()] if log.exists() else []
         self.budget = args.budget
         self.last_views = None  # {k: [T', H, 2W, 3]} of the last candidate (vlm)
@@ -276,7 +279,7 @@ def main():
         for s in range(0, len(eps), B):
             batch = eps[s:s + B]
             pad = batch + [batch[0]] * (B - len(batch))
-            set_z(np.stack([props[ci][j][0] for ci, j, _ in pad]))
+            set_z(np.stack([active[ci].M @ props[ci][j][0] for ci, j, _ in pad]))
             r = rollout.run_batch(policy, env, procs, [active[ci].init for ci, _, _ in pad], args.seed,
                                   noise_seeds=[active[ci].seeds[k] for ci, _, k in pad],
                                   view_every=VIEW_EVERY if args.method == "vlm" else 0)
@@ -288,7 +291,7 @@ def main():
                 rr = [res[(ci, j, k)] for k in range(args.k)]
                 succ, steps = [x[0] for x in rr], [x[1] for x in rr]
                 ok = [n for s, n in zip(succ, steps) if s]
-                c.add({"z": [float(v) for v in z], "success": succ, "steps": steps, "rate": float(np.mean(succ)),
+                c.add({"z": [float(v) for v in z], "z_policy": [float(v) for v in c.M @ z], "success": succ, "steps": steps, "rate": float(np.mean(succ)),
                        "mean_steps": float(np.mean(ok)) if ok else float(T), "t": time.time(), **meta})
                 c.last_views = {k: rr[k][2] for k in range(args.k)} if args.method == "vlm" else None
         msg = " ".join(f"{c.name}:{c.cands[-1]['rate']:.2f}/best {max(x['rate'] for x in c.cands):.2f}" for c in active)
