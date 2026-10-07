@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run each line of FILE as a shell command on one A100, at most PAR at a time, in file order.
-# Lines may chain steps with && and use $POLICY. Logs: <FILE dir>/logs-JOB/, incl. gpu.csv, ram.csv.
+# Lines may chain steps with && and use $POLICY. Logs: <FILE dir>/logs-JOB/, incl. gpu.csv, ram.csv (job cgroup MB).
 # sbatch steer_lines.sbatch FILE [PAR=1]
 #SBATCH --job-name=steer-lines
 #SBATCH --account=grp_hbenamor
@@ -29,7 +29,7 @@ logs="$(dirname "$FILE")/logs-${SLURM_JOB_ID:?Run using sbatch}"
 mkdir -p "$logs"
 nvidia-smi --query-gpu=timestamp,memory.used,utilization.gpu --format=csv,noheader -l 10 > "$logs/gpu.csv" &
 smi=$!
-(while :; do echo "$(date +%s) $(free -m | awk 'NR==2{print $3}')"; sleep 10; done) > "$logs/ram.csv" &
+(while :; do echo "$(date +%s) $(( $(cat /sys/fs/cgroup/memory/slurm/uid_$(id -u)/job_$SLURM_JOB_ID/memory.usage_in_bytes) >> 20 ))"; sleep 10; done) > "$logs/ram.csv" &
 ram=$!
 i=0
 pids=()

@@ -1,5 +1,7 @@
 """Load SmolVLA and a LIBERO vector env once; run batched episodes from chosen init states."""
 import json
+import multiprocessing as mp
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,6 +49,10 @@ def load(args):
     """Returns (policy, env, procs); procs = (env_pre, env_post, pre, post) as rollout() expects."""
     set_seed(args.seed)
     env_cfg = env_config(args)
+    # Workers share imports via forkserver preload and return freed sim memory: ~1.4 vs 2.2 GB/env, same results
+    os.environ.setdefault("MALLOC_TRIM_THRESHOLD_", str(64 << 20))
+    os.environ.setdefault("MALLOC_ARENA_MAX", "2")
+    mp.set_forkserver_preload(["lerobot.envs.libero"])
     env = make_env(env_cfg, n_envs=args.batch_size, use_async_envs=not args.sync_envs)
     env = env[args.suite][args.task_id]
     if hasattr(env, "_ensure"):  # lerobot's lazy async wrapper has no set_attr

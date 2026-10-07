@@ -25,7 +25,7 @@ out="$THESIS_OUTPUT_ROOT/smolvla/steer2/bench-${SLURM_JOB_ID:?Run using sbatch}"
 mkdir -p "$out"
 nvidia-smi --query-gpu=timestamp,memory.used,utilization.gpu --format=csv,noheader -l 5 > "$out/gpu.csv" &
 smi=$!
-(while :; do echo "$(date +%s) $(free -m | awk 'NR==2{print $3}')"; sleep 5; done) > "$out/ram.csv" &
+(while :; do echo "$(date +%s) $(( $(cat /sys/fs/cgroup/memory/slurm/uid_$(id -u)/job_$SLURM_JOB_ID/memory.usage_in_bytes) >> 20 ))"; sleep 5; done) > "$out/ram.csv" &
 ram=$!
 for cfg in "$@"; do
   P=${cfg%x*} B=${cfg#*x}
