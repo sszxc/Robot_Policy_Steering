@@ -14,3 +14,7 @@ for t, i in INITS.items():
     lines = [f"{run} --task-id {t} --inits {i} --method {m} --output-dir {R}/t{t}/{m}" for m in ("vlm", "cem")]
     (out / f"icl-t{t}.txt").write_text("\n".join(lines) + "\n")
 print(sorted(p.name for p in out.iterdir()))
+# Follow-up: VLM with a per-chain signed permutation of z (removes the shared axis-order bias), 2 tasks per job
+for name, ts in (("a", (0, 7)), ("b", (9, 4))):
+    lines = [f"{run} --task-id {t} --inits {INITS[t]} --method vlm --perm --output-dir {R}/t{t}/vlm-perm" for t in ts]
+    (out / f"icl-perm-{name}.txt").write_text("\n".join(lines) + "\n")
