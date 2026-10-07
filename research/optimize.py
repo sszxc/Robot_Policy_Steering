@@ -164,7 +164,8 @@ def call_vlm(args, prompt, images, temperature):
     r = requests.post(f"{API['base']}/chat/completions", timeout=(5, 300),
                       headers={"Authorization": f"Bearer {API['key']}"},
                       json={"model": args.model, "messages": [{"role": "user", "content": content}],
-                            "temperature": temperature, "max_tokens": args.max_tokens})
+                            "temperature": temperature, "max_tokens": args.max_tokens,
+                            "cache": {"no-cache": True}})  # LiteLLM proxy caches identical requests ~60 s
     r.raise_for_status()
     d = r.json()
     msg = d["choices"][0]["message"]
