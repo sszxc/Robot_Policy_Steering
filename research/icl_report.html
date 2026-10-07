@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmolVLA z optimization: VLM vs CEM</title>
+<script src="plotly.min.js"></script>
+<style>
+:root { --bg:#fcfcfb; --fg:#1b1b1a; --muted:#5f5e5a; --line:#e4e3df; --code:#f1f0ec; --acc:#2a78d6; --card:#ffffff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; } }
+:root[data-theme="dark"] { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; }
+body { background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+h1 { font-size:1.6em; margin-bottom:.3em; } h2 { font-size:1.2em; margin-top:2em; border-bottom:1px solid var(--line); padding-bottom:.2em; }
+a { color:var(--acc); } code { background:var(--code); padding:1px 4px; border-radius:3px; font-size:.9em; }
+table { border-collapse:collapse; margin:.8em 0; font-size:.85em; display:block; overflow-x:auto; }
+th, td { border:1px solid var(--line); padding:3px 7px; text-align:left; white-space:nowrap; }
+th { background:var(--code); }
+figure { margin:1.4em 0; } figure > div { background:#fff; border-radius:4px; overflow-x:auto; }
+figcaption { color:var(--muted); font-size:.87em; margin-top:.4em; }
+pre.vlm { background:var(--code); padding:.6em .9em; border-radius:4px; white-space:pre-wrap; font-size:.85em; }
+.key { border-left:3px solid var(--acc); padding:.2em .9em; margin:1em 0; }
+</style></head><body>
+<h1>SmolVLA z optimization on hard inits: VLM in context vs CEM (LIBERO-Object)</h1>
+<p>Follow-up to <a href="smolvla_steer2_object.html">steering round 2</a>. For one hard init state per task, how many
+candidate z does an optimizer need before the policy solves that init? Two optimizers are compared on identical seeds:
+a VLM that proposes z in context, and CEM.</p>
+
+<h2>Setup</h2>
+<ul>
+<li>Policy <code>HuggingFaceVLA/smolvla_libero</code>, suite <code>libero_object</code>. Steering as in round 2: FiLM on the
+  action-expert MLP outputs of layers 7, 15, 23, 31, [γ;β] = α·W·z with random W (seed 0), α = 0.3, z ∈ ℝ⁸. Coordinates
+  are limited to [−1.5, 1.5] on a 0.1 grid.</li>
+<li>Tasks and inits: t0 init 4, t7 init 6, t9 init 3, t4 init 7 (inits with low z=0 success).</li>
+<li><b>Chain</b> = one (init, repeat) optimization run. <b>Candidate</b> = one z evaluated in a chain, on the same
+  K = 8 flow-noise seeds of that chain. <b>Rate</b> = successes / 8; ties are ranked by the mean steps of the successful
+  rollouts (episode limit 280). Candidate 0 is always z = 0 (the unmodified policy). Budget: 30 candidates per chain,
+  including z = 0; a chain stops early when a candidate reaches 8/8.</li>
+<li><b>VLM</b> (<code>qwen38-27b</code>, temperature 0.3): one z per round. The prompt holds the task text, all
+  evaluated candidates with their results, and two rollout images of the last candidate (5 frames, third-person | wrist).
+  Up to 3 attempts per round (higher temperature on retries); if all fail, a random z is used (<code>fallback_random</code>).
+  <b>CEM</b>: population 6, 2 elites, σ₀ = 0.5, 5 generations; generation 0 contains z = 0.</li>
+<li>Repeats r0–r2 per task and method (Sol), plus r3–r4 for t0 (local). The same (init, repeat) uses the same noise seeds for
+  both methods, so chains are paired.</li>
+<li>Main metric: sample efficiency, the first candidate index at which a chain reaches ≥ 6/8 or 8/8.</li>
+<li>Code: <code>research/{optimize,plot_icl}.py</code>, jobs from <code>experiments/libero/icl/lines/</code>. Raw data:
+  <code>out/libero/smolvla/icl/hpc/</code> (local copy of Sol <code>results/smolvla/icl/</code>) and
+  <code>out/icl-local/</code>.</li>
+</ul>
+
+<h2>Sample efficiency</h2>
+<figure><!--fig:best--><figcaption>Best success rate found so far vs number of candidates evaluated (x = 0 is z = 0).
+Thin lines: single chains; chains that reached 8/8 are carried forward at 1.0. Bold: mean over chains, drawn only up to the index every chain has reached.</figcaption></figure>
+<figure><!--fig:solved--><figcaption>Fraction of chains that have reached ≥ 6/8 (left) or 8/8 (right) within x candidates,
+pooled over tasks. Curves are drawn only up to the index where the outcome of every chain is known.</figcaption></figure>
+<!--fig:tab_median-->
+<p>Table: per task and method, how many chains reached each threshold and the median first index. Medians use chains with a
+known outcome (reached, or budget used); a chain that never reached the threshold counts as &gt; 29.</p>
+<!--fig:tab_chains-->
+<p>Table: one row per chain (pairs with the same init and repeat are adjacent). "first" columns give the candidate index
+(0 = z = 0); "–" = not reached yet. Best = highest rate, ties by fewer steps.</p>
+
+<h2>Exploration</h2>
+<figure><!--fig:explore--><figcaption>Left: success rate of every evaluated candidate vs its index. Right: Euclidean norm
+of the same candidates. Points are shifted horizontally by method for readability.</figcaption></figure>
+
+<h2>Episode length</h2>
+<figure><!--fig:steps--><figcaption>Mean steps of the successful rollouts, best candidate of each chain vs z = 0 of the
+same chain (same seeds). Points at 280 had no successful rollout. Below the diagonal = the best z finishes faster.</figcaption></figure>
+
+<h2>VLM behaviour</h2>
+<figure><!--fig:vlm_diag--><figcaption>Left: wall-clock latency of one proposal (including retries); right: completion
+tokens (reasoning included) per call, per task.</figcaption></figure>
+<!--fig:tab_vlm-->
+<p>Table: source of each accepted proposal (<code>vlm_retryN</code> = accepted on attempt N+1) and the failed attempts
+found in the response logs.</p>
+<p>Example answers (final text after the reasoning, parameter block removed, truncated):</p>
+<!--fig:vlm_text-->
+<figure><!--fig:vlm_image--></figure>
+
+<h2>Takeaways</h2>
+<!--takeaways-->
+</body></html>
