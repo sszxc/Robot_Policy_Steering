@@ -22,8 +22,23 @@ def depth_colors(kp):
     return cv2.applyColorMap((t * 255).astype(np.uint8)[:, None], cv2.COLORMAP_TURBO)[:, 0], t
 
 
+def badges(img, items):
+    """Bordered status pills along the bottom-left; items: [(label, on)], off = grey."""
+    x, font = 10, cv2.FONT_HERSHEY_SIMPLEX
+    for label, on in items:
+        (tw, th), _ = cv2.getTextSize(label, font, 0.5, 1)
+        col = (0, 255, 44) if on else (110, 110, 110)
+        p0, p1 = (x, H - 16 - th), (x + tw + 16, H - 8)
+        if on:
+            cv2.rectangle(img, p0, p1, (0, 70, 12), -1)
+        cv2.rectangle(img, p0, p1, col, 1, cv2.LINE_AA)
+        cv2.putText(img, label, (x + 8, H - 12), font, 0.5, col, 1, cv2.LINE_AA)
+        x = p1[0] + 8
+
+
 def draw(kp, status, rec=False, dots=False):
-    """kp: 26x3 Leap keypoints (m) or None. Leap x -> right, z (toward you) -> down, 1 px/mm; far drawn first."""
+    """kp: 26x3 Leap keypoints (m) or None; status: [(label, on)] badges.
+    Leap x -> right, z (toward you) -> down, 1 px/mm; far drawn first."""
     img = np.zeros((H, W, 3), np.uint8)
     if kp is not None:
         px = (kp[:, [0, 2]] * 1000 + [W / 2, H / 2]).astype(int)
@@ -33,7 +48,7 @@ def draw(kp, status, rec=False, dots=False):
                 cv2.line(img, tuple(px[a]), tuple(px[b]), ((col[a].astype(int) + col[b]) // 2).tolist(), 2, cv2.LINE_AA)
         for i in np.argsort(t):
             cv2.circle(img, tuple(px[i]), int(2 + 4 * t[i]), col[i].tolist(), -1, cv2.LINE_AA)
-    cv2.putText(img, status, (10, H - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 44), 1)
+    badges(img, status)
     if rec:
         cv2.circle(img, (18, 20), 7, (0, 0, 255), -1, cv2.LINE_AA)
         cv2.putText(img, "REC", (32, 27), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)

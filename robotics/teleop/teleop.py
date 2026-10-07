@@ -58,7 +58,7 @@ def main():
     hand, live = (HandLink() if args.real else None), False
     print(__doc__)
 
-    with mujoco.viewer.launch_passive(m, d) as viewer:
+    with mujoco.viewer.launch_passive(m, d, show_left_ui=False, show_right_ui=False) as viewer:
         hand_sim.set_camera(viewer.cam)
         t0 = time.time()
         while viewer.is_running():
@@ -102,9 +102,7 @@ def main():
                     pos = d.mocap_pos[0].copy()
                 hand_sim.set_wrist(d, pos, R)
 
-            status = f"wrist {'tracking' if tracking else 'frozen'}{'' if s else '  no right hand'}"
-            if hand:
-                status += f"  real {'LIVE' if live else 'off'}"
+            status = [("right hand", s is not None), ("wrist tracking", tracking), ("real hand live", live)]
             if not leap_view.show(None if s is None else s[2], status, recording, dots):
                 break
 

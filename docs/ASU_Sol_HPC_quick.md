@@ -8,7 +8,7 @@
 
 ```bash
 ssh xzhan742@sol.asu.edu
-# agent 非交互检查：失败即退出，不等待密码或 Duo 输入
+# agent 非交互检查：失败即退出，不等待密码或 Duo 输入；
 ssh -T -o BatchMode=yes -o PreferredAuthentications=publickey -o ConnectTimeout=15 \
   xzhan742@sol.asu.edu 'hostname; myaccounts -p; myjobs'
 ```

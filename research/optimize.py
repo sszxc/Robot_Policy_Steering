@@ -31,6 +31,7 @@ def parse_args():
     parser.add_argument("--method", choices=["vlm", "cem"], required=True)
     parser.add_argument("--inits", default="0", help="comma list of init state ids")
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument("--rep-start", type=int, default=0)
     parser.add_argument("--k", type=int, default=8, help="noise seeds per candidate")
     parser.add_argument("--budget", type=int, default=30, help="candidates per chain, incl. z = 0")
     parser.add_argument("--box", type=float, default=1.5, help="z coordinates in [-box, box], 0.1 grid")
@@ -253,7 +254,7 @@ def main():
         load_api()
     (out / "chains").mkdir(exist_ok=True)
     chains = [Chain(args, int(i), r, out / "chains" / f"i{int(i)}-r{r}.jsonl")
-              for i in args.inits.split(",") for r in range(args.repeats)]
+              for i in args.inits.split(",") for r in range(args.rep_start, args.rep_start + args.repeats)]
     policy, env, procs = rollout.load(args)
     dim, set_z = INJECT["expert_film"](policy, layers=[int(l) for l in args.layers.split(",")],
                                        dim=args.dim, alpha=args.alpha, w=args.w, seed=args.w_seed)

@@ -123,12 +123,13 @@ def fig_openloop(root, out, rep):
             rep.setdefault("openloop", {}).setdefault(f"t{t}", {})[w] = {
                 "median_da0": dict(zip(map(float, d["scales"]), med.round(4).tolist())), "noise_sd": float(noise)}
         if found:
-            fig.add_hline(y=noise, line=dict(color=COL["zero"], dash="dash"), row=1, col=c,
-                          annotation_text="noise sd" if c == 1 else None)
+            fig.add_hline(y=noise, line=dict(color=COL["zero"], dash="dash"), row=1, col=c)
     if not found:
         return print("skip openloop")
-    fig.update_xaxes(type="log", title_text="scale c")
-    fig.update_yaxes(type="log", title_text="median RMS Δa₀ (normalized)", col=1)
+    ticks = [0.003, 0.01, 0.03, 0.1, 0.3, 1, 3]
+    fig.update_xaxes(type="log", title_text="scale c", tickvals=ticks)
+    fig.update_yaxes(type="log", tickvals=ticks)  # every col: matches="y" does not copy the axis type
+    fig.update_yaxes(title_text="median RMS Δa₀ (normalized)", col=1)
     save(fig, out, "openloop", title="Open-loop first-action change vs scale (no simulation; dashed = z=0 noise sd)",
          height=380)
 
@@ -348,7 +349,7 @@ def fig_traj3d(R, scene_dir, out, rows, n_inits=10):
                 fig.add_scatter3d(x=p[-1:, 0], y=p[-1:, 1], z=p[-1:, 2], mode="markers", showlegend=False,
                                   marker=dict(color=color, size=4, symbol="x"), visible=show,
                                   hovertext=f"{name}: episode end", hoverinfo="text")
-                vis.append(r)
+                vis += [r, r]  # one entry per trace (path + end marker)
             p0 = z0run["state"][ep_of(z0run, 0), 0, :3] * 100
             pos = scene["inits"][str(r)]
             anns[r] = []
