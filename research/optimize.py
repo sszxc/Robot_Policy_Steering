@@ -2,7 +2,7 @@
 
 A chain = (init, repeat). Every candidate z of a chain runs on the same K flow-noise seeds
 (seed + init + 1000 * (repeat * K + k), as research.run reps); candidate 0 is z = 0. --method vlm asks
-a VLM in context (history + frames of the last candidate), cem samples Gaussian generations.
+a VLM in context (history + frames of the last candidate; --text-only: history only), cem samples Gaussian generations.
 Chains share the env batch and stop at K/K success or --budget candidates. Re-running into the
 same --output-dir resumes from the chain logs.
 """
@@ -50,6 +50,7 @@ def parse_args():
     parser.add_argument("--frames", type=int, default=5, help="frames per rollout image")
     parser.add_argument("--view-every", type=int, default=5, help="capture policy images every N steps")
     parser.add_argument("--perm", action="store_true", help="per-chain random signed permutation between the optimizer's z and the policy's")
+    parser.add_argument("--text-only", action="store_true", help="vlm without rollout images (history text only)")
     return parser.parse_args()
 
 
@@ -265,6 +266,7 @@ def main():
     assert dim == args.dim
     task, T = env.call("task_description")[0], env.call("_max_episode_steps")[0]
     B = args.batch_size
+    views = args.method == "vlm" and not args.text_only
     pool = ThreadPoolExecutor(max(1, len(chains)))
     while active := [c for c in chains if not c.done]:
         t0 = time.time()
@@ -282,10 +284,10 @@ def main():
             set_z(np.stack([active[ci].M @ props[ci][j][0] for ci, j, _ in pad]))
             r = rollout.run_batch(policy, env, procs, [active[ci].init for ci, _, _ in pad], args.seed,
                                   noise_seeds=[active[ci].seeds[k] for ci, _, k in pad],
-                                  view_every=VIEW_EVERY if args.method == "vlm" else 0)
+                                  view_every=VIEW_EVERY if views else 0)
             for b, e in enumerate(batch):
                 res[e] = (bool(r["success"][b]), int(r["steps"][b]),
-                          r["views"][b] if args.method == "vlm" else None)
+                          r["views"][b] if views else None)
         for ci, (c, p) in enumerate(zip(active, props)):
             for j, (z, meta) in enumerate(p):
                 rr = [res[(ci, j, k)] for k in range(args.k)]
@@ -293,7 +295,7 @@ def main():
                 ok = [n for s, n in zip(succ, steps) if s]
                 c.add({"z": [float(v) for v in z], "z_policy": [float(v) for v in c.M @ z], "success": succ, "steps": steps, "rate": float(np.mean(succ)),
                        "mean_steps": float(np.mean(ok)) if ok else float(T), "t": time.time(), **meta})
-                c.last_views = {k: rr[k][2] for k in range(args.k)} if args.method == "vlm" else None
+                c.last_views = {k: rr[k][2] for k in range(args.k)} if views else None
         msg = " ".join(f"{c.name}:{c.cands[-1]['rate']:.2f}/best {max(x['rate'] for x in c.cands):.2f}" for c in active)
         print(f"round: {len(eps)} eps, propose {t_prop:.0f}s, total {time.time() - t0:.0f}s | {msg}", flush=True)
     print(f"all chains done -> {out}")
