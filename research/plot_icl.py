@@ -17,8 +17,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 TASKS = (0, 7, 9, 4)
-METHODS = ("vlm", "vlm-perm", "cem")
-COL = {"vlm": "#eb6834", "vlm-perm": "#9b4dca", "cem": "#2a78d6", "zero": "#52514e"}
+METHODS = ("vlm", "vlm-perm", "llm-perm", "cem")
+COL = {"vlm": "#eb6834", "vlm-perm": "#9b4dca", "llm-perm": "#1f9e74", "cem": "#2a78d6", "zero": "#52514e"}
 SYM = {0: "circle", 7: "diamond", 9: "square", 4: "triangle-up"}
 LAYOUT = dict(template="plotly_white", font=dict(size=12), margin=dict(l=60, r=20, t=50, b=50),
               legend=dict(orientation="h", y=-0.15))
@@ -30,7 +30,7 @@ def load(roots):
     for root in roots:
         for prov in sorted(root.glob("*/*/provenance.json")):
             cfg = json.loads(prov.read_text())["config"]
-            cfg["method"] += "-perm" if cfg.get("perm") else ""
+            cfg["method"] = ("llm" if cfg.get("text_only") else cfg["method"]) + ("-perm" if cfg.get("perm") else "")
             for f in sorted((prov.parent / "chains").glob("i*-r*.jsonl")):
                 cands = [json.loads(l) for l in f.read_text().splitlines() if l.strip()]
                 if not cands:
@@ -93,6 +93,10 @@ def fig_best(C, out):
                 fig.add_scatter(x=np.arange(len(y)), y=y, mode="lines", line=dict(color=COL[m], width=1),
                                 opacity=0.35, name=label(ch), legendgroup=m + "_chain", showlegend=False,
                                 hovertemplate=label(ch) + " cand %{x}: best %{y:.3f}<extra></extra>", row=r, col=c)
+                fig.add_scatter(x=np.arange(len(ch["rate"])), y=ch["rate"], mode="lines",
+                                line=dict(color=COL[m], width=1, dash="dash"), opacity=0.35, name=m.upper() + " raw",
+                                legendgroup=m + "_raw", showlegend=n == 0 and ch is chs[0],
+                                hovertemplate=label(ch) + " cand %{x}: rate %{y:.3f}<extra></extra>", row=r, col=c)
             if curves:  # mean only where every chain of the method is known
                 L = min(map(len, curves))
                 fig.add_scatter(x=np.arange(L), y=np.mean([y[:L] for y in curves], 0), mode="lines+markers",
@@ -104,7 +108,7 @@ def fig_best(C, out):
     fig.update_xaxes(title_text="candidates evaluated (0 = z=0)", row=2)
     fig.update_yaxes(range=[-0.03, 1.05], dtick=0.25)
     fig.update_yaxes(title_text="best success so far", col=1)
-    save(fig, out, "best", title="Best-so-far success rate per chain (thin) and per-method mean (bold)", height=620)
+    save(fig, out, "best", title="Best-so-far per chain (thin), raw rate per candidate (dashed), per-method mean of best-so-far (bold)", height=620)
 
 
 def fig_solved(C, out):
@@ -130,7 +134,7 @@ def fig_solved(C, out):
 
 def fig_explore(C, out):
     fig = make_subplots(rows=1, cols=2, subplot_titles=["success rate of each candidate", "‖z‖ of each candidate"])
-    for m, dx in zip(METHODS, (-0.2, 0, 0.2)):
+    for m, dx in zip(METHODS, (-0.3, -0.1, 0.1, 0.3)):
         chs = [ch for ch in C.values() if ch["method"] == m]
         if not chs:
             continue
@@ -145,14 +149,14 @@ def fig_explore(C, out):
     fig.update_xaxes(range=[-0.5, 29.5], dtick=5, title_text="candidate index (0 = z=0)")
     fig.update_yaxes(range=[-0.05, 1.05], dtick=0.25, title_text="success rate", col=1)
     fig.update_yaxes(rangemode="tozero", title_text="‖z‖", col=2)
-    save(fig, out, "explore", title="Every evaluated candidate (VLM shifted left, CEM right)", height=400)
+    save(fig, out, "explore", title="Every evaluated candidate (methods shifted left to right in legend order)", height=400)
 
 
 def vlm_attempts(C):
     """Failed attempt counts from VLM response logs: API error, no <param> block, other (duplicate / incomplete)."""
     n = {"API error": 0, "no &lt;param&gt; block": 0, "duplicate or incomplete z": 0}
     for ch in C.values():
-        if not ch["method"].startswith("vlm"):
+        if not ch["method"].startswith(("vlm", "llm")):
             continue
         accepted = {c["i"] for c in ch["cands"] if c["source"].startswith("vlm")}
         for f in sorted((ch["dir"] / "vlm" / ch["name"]).glob("response_*.txt")):
@@ -173,7 +177,7 @@ def vlm_attempts(C):
 
 
 def fig_vlm(C, out):
-    calls = [(ch["task"], c) for ch in C.values() if ch["method"].startswith("vlm") for c in ch["cands"] if c["source"] != "zero"]
+    calls = [(ch["task"], c) for ch in C.values() if ch["method"].startswith(("vlm", "llm")) for c in ch["cands"] if c["source"] != "zero"]
     if not calls:
         return print("skip vlm")
     fig = make_subplots(rows=1, cols=2, subplot_titles=["latency per proposal [s]", "completion tokens per call"])
@@ -191,7 +195,68 @@ def fig_vlm(C, out):
     rows = [["proposal source", k, v] for k, v in sorted(src.items())] + [
         ["failed attempt", k, v] for k, v in vlm_attempts(C).items()]
     table(out, "tab_vlm", ["kind", "", "count"], rows)
-    save(fig, out, "vlm_diag", title=f"VLM proposals ({len(calls)} incl. fallbacks)", height=400)
+    save(fig, out, "vlm_diag", title=f"VLM / LLM proposals ({len(calls)} incl. fallbacks)", height=400)
+
+
+def load_heldout(root, C):
+    """Attach research.heldout rates to chains (ch["held"]); returns {(task, init): z=0 held-out rate}."""
+    by_path = {(ch["dir"] / "chains" / f"{ch['name']}.jsonl").resolve(): ch for ch in C.values()}
+    Z = {}
+    for f in sorted(root.glob("*/results.jsonl")):
+        task = json.loads((f.parent / "provenance.json").read_text())["config"]["task_id"]
+        for row in map(json.loads, f.read_text().splitlines()):
+            if row["method"] == "zero":
+                Z[(task, row["init"])] = row["rate"]
+            elif Path(row["key"]) in by_path:
+                by_path[Path(row["key"])]["held"] = row["rate"]
+    return Z
+
+
+def fig_heldout(C, Z, out):
+    chs = [ch for ch in C.values() if "held" in ch]
+    if not chs:
+        return print("skip heldout")
+    fig = make_subplots(rows=1, cols=2, column_widths=[0.45, 0.55],
+                        subplot_titles=["best z: 8 optimization seeds vs 32 held-out seeds", "held-out rate per task"])
+    fig.add_scatter(x=[0, 1], y=[0, 1], mode="lines", line=dict(color=COL["zero"], dash="dash", width=1),
+                    showlegend=False, hoverinfo="skip", row=1, col=1)
+    rng = np.random.default_rng(0)
+    for n, m in enumerate(METHODS):
+        cm = [ch for ch in chs if ch["method"] == m]
+        if not cm:
+            continue
+        fig.add_scatter(x=[ch["best"]["rate"] + rng.uniform(-0.02, 0.02) for ch in cm], y=[ch["held"] for ch in cm],
+                        mode="markers", marker=dict(color=COL[m], symbol=[SYM[ch["task"]] for ch in cm], size=9, opacity=0.8),
+                        name=m.upper(), legendgroup=m, text=[label(ch) for ch in cm],
+                        hovertemplate="%{text}<br>train %{x:.2f}, held-out %{y:.3f}<extra></extra>", row=1, col=1)
+        fig.add_box(x=[f"t{ch['task']}" for ch in cm], y=[ch["held"] for ch in cm], name=m.upper(), legendgroup=m,
+                    marker_color=COL[m], boxpoints="all", jitter=0.4, pointpos=0, showlegend=False, text=[label(ch) for ch in cm],
+                    hovertemplate="%{text}: held-out %{y:.3f}<extra></extra>", row=1, col=2)
+    zt = sorted(Z.items(), key=lambda kv: TASKS.index(kv[0][0]))
+    fig.add_scatter(x=[f"t{t}" for (t, _), _ in zt], y=[r for _, r in zt], mode="markers", name="z = 0",
+                    marker=dict(color=COL["zero"], symbol="line-ew-open", size=40, line=dict(width=3)),
+                    hovertemplate="%{x} z=0: held-out %{y:.3f}<extra></extra>", row=1, col=2)
+    fig.update_layout(boxmode="group")
+    fig.update_xaxes(range=[-0.05, 1.05], dtick=0.25, title_text="rate on the chain's 8 seeds", row=1, col=1)
+    fig.update_xaxes(categoryorder="array", categoryarray=[f"t{t}" for t in TASKS], row=1, col=2)
+    fig.update_yaxes(range=[-0.03, 1.05], dtick=0.25, title_text="rate on 32 held-out seeds", col=1)
+    save(fig, out, "heldout", title="Held-out re-evaluation of each chain's best z", height=480)
+
+    rows = []
+    for t in TASKS + (None,):
+        for m in METHODS:
+            cm = [ch for ch in chs if ch["method"] == m and (t is None or ch["task"] == t)]
+            if not cm:
+                continue
+            d = np.array([ch["held"] - Z[(ch["task"], ch["init"])] for ch in cm])
+            sv = [ch["held"] for ch in cm if ch["solved"]]
+            rows.append([f"t{t}" if t is not None else "<b>all</b>", m.upper(), len(cm),
+                         f"{np.mean([ch['best']['rate'] for ch in cm]):.3f}", f"{np.mean([ch['held'] for ch in cm]):.3f}",
+                         f"{np.mean(sv):.3f} (n={len(sv)})" if sv else "–", f"{d.mean():+.3f}",
+                         f"{(d > 0).sum()}/{(d < 0).sum()}/{(d == 0).sum()}"])
+    rows += [[f"t{t}", "z = 0", 1, "", f"{r:.3f}", "", "", ""] for (t, _), r in zt]
+    table(out, "tab_heldout", ["task", "method", "chains", "mean train rate (best z)", "mean held-out",
+                               "held-out of 8/8 chains", "mean Δ vs z=0 held-out", "better / worse / equal than z=0"], rows)
 
 
 def fig_steps(C, out):
@@ -314,6 +379,7 @@ def main():
     parser.add_argument("--out", type=Path, required=True, help="figure fragment dir")
     parser.add_argument("--template", type=Path, help="page with <!--fig:name--> markers")
     parser.add_argument("--page", type=Path, help="output page (needs --template)")
+    parser.add_argument("--heldout", type=Path, help="research.heldout root (*/results.jsonl)")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     C = load(args.roots)
@@ -323,6 +389,8 @@ def main():
     fig_explore(C, args.out)
     fig_vlm(C, args.out)
     fig_steps(C, args.out)
+    if args.heldout:
+        fig_heldout(C, load_heldout(args.heldout, C), args.out)
     tables(C, args.out)
     vlm_examples(C, args.out)
     summary(C)
