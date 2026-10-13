@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SmolVLA z optimization: VLM vs CEM</title>
+<title>SmolVLA z optimization: VLM vs LLM vs CEM</title>
 <script src="plotly.min.js"></script>
 <style>
 :root { --bg:#fcfcfb; --fg:#1b1b1a; --muted:#5f5e5a; --line:#e4e3df; --code:#f1f0ec; --acc:#2a78d6; --card:#ffffff; }
@@ -21,7 +21,8 @@ pre.vlm { background:var(--code); padding:.6em .9em; border-radius:4px; white-sp
 <h1>SmolVLA z optimization on hard inits: VLM in context vs CEM (LIBERO-Object)</h1>
 <p>Follow-up to <a href="smolvla_steer2_object.html">steering round 2</a>. For one hard init state per task, how many
 candidate z does an optimizer need before the policy solves that init? Optimizers are compared on identical seeds:
-a VLM that proposes z in context (as is, and with its coordinates randomly permuted per chain), and CEM.</p>
+a VLM that proposes z in context (as is, and with its coordinates randomly permuted per chain), the same model without
+images (text only), and CEM. The best z of every chain is then re-evaluated on 32 held-out noise seeds.</p>
 
 <h2>Setup</h2>
 <ul>
@@ -41,19 +42,29 @@ a VLM that proposes z in context (as is, and with its coordinates randomly permu
   e₁ …): without M every repeat probes the same policy directions in the same order, so repeats are not independent
   and the result depends on which directions of W happen to come first.<br>
   <b>CEM</b>: population 6, 2 elites, σ₀ = 0.5, 5 generations; generation 0 contains z = 0; per-coordinate σ is updated
-  as ½σ + ½·std(elites), floor 0.1. CEM is invariant to permuting coordinates, so it needs no PERM variant.</li>
+  as ½σ + ½·std(elites), floor 0.1. CEM is invariant to permuting coordinates, so it needs no PERM variant.<br>
+  <b>LLM-PERM</b> (round 2, local): VLM-PERM with the images removed; the prompt keeps the task text and the full
+  history (z, successes, mean steps). Same model, temperature, permutations M and seeds. t7 and t9 only, r0–r4.</li>
 <li>Repeats r0–r2 per task and method (Sol); local extra repeats r3–r4: t0 (VLM, CEM), t9 and t7 (VLM-PERM, CEM).
   The same (init, repeat) uses the same noise seeds for all methods, so chains are paired. Different repeats use different
-  seeds, which is why the z = 0 rate of one init varies between repeats (e.g. t4 init 7: 0, 3, 6 of 8).</li>
+  seeds, which is why the z = 0 rate of one init varies between repeats (e.g. t4 init 7: 0, 3, 6 of 8).<br>
+  Results are bit-identical only on the same machine. The same z and seeds give different rollouts on the local
+  RTX 4090 and on a Sol A100 (t7 init 6, z = 0: r0 1/8 vs 2/8, r1 3/8 vs 1/8). Local LLM-PERM r0–r2 share seeds with the
+  Sol VLM-PERM/CEM chains but are not strictly paired. Strict pairs are the local r3–r4.</li>
+<li><b>Held-out re-evaluation</b> (round 2, local): the best candidate of every finished chain (highest rate, ties by
+  steps), plus z = 0, on 32 new noise seeds per init (seed + init + 1000·(10000 + j)). The seeds are shared by all chains
+  of an init.</li>
 <li>Main metric: sample efficiency, the first candidate index at which a chain reaches ≥ 6/8 or 8/8.</li>
-<li>Code: <code>research/{optimize,plot_icl}.py</code>, jobs from <code>experiments/libero/icl/lines/</code>. Raw data:
+<li>Code: <code>research/{optimize,heldout,plot_icl}.py</code>, jobs from <code>experiments/libero/icl/lines/</code>
+  (Sol) and <code>experiments/libero/icl/local_round2.sh</code> (LLM-PERM + held-out). Raw data:
   <code>out/libero/smolvla/icl/hpc/</code> (local copy of Sol <code>results/smolvla/icl/</code>) and
-  <code>out/icl-local/</code>.</li>
+  <code>out/icl-local/</code>, held-out in <code>out/icl-heldout/</code>.</li>
 </ul>
 
 <h2>Sample efficiency</h2>
 <figure><!--fig:best--><figcaption>Best success rate found so far vs number of candidates evaluated (x = 0 is z = 0).
-Thin lines: single chains; chains that reached 8/8 are carried forward at 1.0. Bold: mean over chains, drawn only up to the index every chain has reached.</figcaption></figure>
+Thin solid lines: best-so-far of single chains; chains that reached 8/8 are carried forward at 1.0.
+Dashed lines: raw success rate of each candidate of the same chains (click a legend entry to toggle). Bold: mean over chains, drawn only up to the index every chain has reached.</figcaption></figure>
 <figure><!--fig:solved--><figcaption>Fraction of chains that have reached ≥ 6/8 (left) or 8/8 (right) within x candidates,
 pooled over tasks. Curves are drawn only up to the index where the outcome of every chain is known.</figcaption></figure>
 <!--fig:tab_median-->
@@ -63,6 +74,14 @@ known outcome (reached, or budget used); a chain that never reached the threshol
 <p>Table: one row per chain (pairs with the same init and repeat are adjacent). "first" columns give the candidate index
 (0 = z = 0); "–" = not reached yet. Best = highest rate, ties by fewer steps.</p>
 
+<h2>Held-out re-evaluation</h2>
+<figure><!--fig:heldout--><figcaption>Left: rate of each chain's best z on the chain's own 8 seeds (x, jittered) vs on 32
+held-out seeds (y); points below the diagonal lost success on new seeds. Marker shape = task (circle t0, diamond t7,
+square t9, triangle t4). Right: held-out rate per task and method; the grey bar is z = 0 on the same held-out seeds.</figcaption></figure>
+<!--fig:tab_heldout-->
+<p>Table: held-out rate of the best z per task and method. "Held-out of 8/8 chains" averages only chains that reached
+8/8. Δ is relative to z = 0 on the same 32 seeds.</p>
+
 <h2>Exploration</h2>
 <figure><!--fig:explore--><figcaption>Left: success rate of every evaluated candidate vs its index. Right: Euclidean norm
 of the same candidates. Points are shifted horizontally by method for readability.</figcaption></figure>
@@ -71,7 +90,7 @@ of the same candidates. Points are shifted horizontally by method for readabilit
 <figure><!--fig:steps--><figcaption>Mean steps of the successful rollouts, best candidate of each chain vs z = 0 of the
 same chain (same seeds). Points at 280 had no successful rollout. Below the diagonal = the best z finishes faster.</figcaption></figure>
 
-<h2>VLM behaviour</h2>
+<h2>VLM / LLM behaviour</h2>
 <figure><!--fig:vlm_diag--><figcaption>Left: wall-clock latency of one proposal (including retries); right: completion
 tokens (reasoning included) per call, per task.</figcaption></figure>
 <!--fig:tab_vlm-->
@@ -83,27 +102,29 @@ found in the response logs.</p>
 
 <h2>Takeaways</h2>
 <ul>
-<li><b>z is a usable test-time adaptation space for single hard inits.</b> Starting from inits where z = 0 succeeds
-  0–2 of 8 (most repeats), a z with 8/8 on the chain's seeds was found within 30 candidates in 13/16 VLM-PERM, 13/18 CEM
-  and 10/14 VLM chains. The best z stay moderate (median ‖z‖ ≈ 1.7–1.9, inside the usable range of round 2).</li>
-<li><b>≥ 6/8 is easy, 8/8 separates the methods.</b> CEM's random generation 0 often reaches ≥ 6/8 within 1–3 candidates
-  (pooled median 5.5 vs 6 for VLM-PERM), so good z are common near the origin. To reach 8/8, VLM-PERM needed a median of
-  9.5 candidates vs 18.5 for CEM (paired by init and repeat: 9 wins, 5 losses, 2 ties; mean 13.6 vs 18.7, chains that
-  never reached 8/8 counted as 30; Wilcoxon p = 0.10, n = 16). Suggestive, not significant.</li>
+<li><b>z is a usable test-time adaptation space for single hard inits, and the gain holds on new seeds.</b> On 32 held-out
+  seeds, the best z of a chain succeeds 0.78–0.82 on average (VLM, VLM-PERM, CEM) vs z = 0 at 0.34 / 0.12 / 0.00 / 0.31
+  (t0 / t7 / t9 / t4). 46 of 48 chains beat z = 0. On t9, z = 0 solves 0 of 32 held-out seeds, while the best z
+  average 0.75–0.81.</li>
+<li><b>Selection optimism is moderate.</b> z that reached 8/8 on their 8 seeds keep about 0.89 on held-out seeds
+  (all methods alike). t4 drops the most (e.g. VLM-PERM r0: 7/8 → 0.41), so 8 seeds are least reliable there.</li>
+<li><b>VLM-PERM is faster to find a good z, but not better at the end.</b> To reach 8/8, VLM-PERM needed a median of 9.5
+  candidates vs 18.5 for CEM (paired by init and repeat: 9 wins, 5 losses, 2 ties; Wilcoxon p = 0.10, n = 16). Held-out
+  quality of the final z is the same (0.82 vs 0.81). The advantage is sample efficiency, not a better optimum.</li>
+<li><b>Images seem to help, mostly on t7 (weak evidence).</b> Text-only LLM-PERM reached 8/8 in 2/5 t7 chains (VLM-PERM 5/5),
+  and three t7 chains stayed at ≤ 3/8 after 30 candidates. On t9 it matched VLM-PERM (4/5 vs 3/5, median 15 vs 11). Over
+  the 10 t7 + t9 pairs: first 8/8 mean 20.2 vs 15.6 candidates (VLM 6 wins, LLM 2, 2 ties; Wilcoxon p = 0.30); held-out
+  rate of the best z 0.65 vs 0.83 (p = 0.22). Caveat: only r3–r4 are same-machine pairs (VLM 2 wins, LLM 1, 1 tie).</li>
 <li><b>Without the permutation the VLM result depends on which coordinate it probes first.</b> The VLM always
   probed +e₀, then −e₀, then e₁ … On t0, −e₀ happens to be a good direction, and all 5 VLM chains reached 8/8 at
-  candidates 3–5. On t9 only 1/3 did. Paired against CEM, the plain VLM is even (5 wins, 6 losses, 3 ties). Per-chain random signed
-  permutations remove this shared bias; VLM-PERM is the fair VLM arm.</li>
-<li><b>Hardest init (t9 init 3, z = 0 at 0–1/8):</b> 8/8 in 3/5 VLM-PERM chains (at candidates 8–11) vs 2/5 CEM chains (18, 21).</li>
-<li><b>VLM cost and reliability:</b> 393 proposals: 388 accepted on the first attempt, 4 after one retry, 1 random fallback.
-  Median latency 70 s (p90 142 s, 6 chains calling in parallel), about 2k completion tokens per call. On a shared A100 a VLM round is about
-  5 min of rollouts plus about 1 min of VLM, and the VLM proposes one candidate per round while CEM evaluates 6 per batch.
-  So VLM-PERM uses fewer rollouts but takes more wall-clock time per candidate.</li>
-<li><b>Caveats.</b> Rates are measured on the same 8 seeds used for selection; no held-out re-evaluation this round, so
-  "8/8" means solved for those seeds, with best-of-N optimism affecting all methods. One W, one init per task,
-  n = 3–5 chains per task and method, one VLM model, and no text-only ablation (the effect of the images is
-  untested).</li>
-<li><b>Next:</b> re-evaluate each chain's best z on fresh seeds; text-only LLM vs VLM (same model, images off);
-  more chains to settle VLM-PERM vs CEM; the RL comparison on the same chain interface.</li>
+  candidates 3–5. On t9 only 1/3 did. Per-chain random signed permutations remove this shared bias; VLM-PERM is the fair VLM arm.</li>
+<li><b>VLM cost and reliability:</b> 591 VLM/LLM proposals, 583 accepted on the first attempt, 1 random fallback. Median
+  latency 70 s (VLM-PERM) and 63 s (LLM-PERM), about 2k completion tokens per call in both. The text-only arm is barely
+  cheaper because the reasoning tokens dominate the cost.</li>
+<li><b>Caveats.</b> One W, one init per task, n = 3–5 chains per task and method, one model. The LLM-PERM comparison
+  covers only t7 and t9 and is mostly cross-machine. The rollouts are chaotic: the same seeds give different outcomes on
+  different GPUs.</li>
+<li><b>Next:</b> same-machine VLM-PERM vs LLM-PERM pairs on t7 to settle the image question; a random-search null and
+  GP-BO as stronger black-box baselines; more inits per task; the RL comparison on the same chain interface.</li>
 </ul>
 </body></html>
