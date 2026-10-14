@@ -84,6 +84,7 @@ def table(out, name, head, rows):
 def fig_best(C, out):
     fig = make_subplots(rows=2, cols=2, subplot_titles=[f"t{t}" for t in TASKS], shared_xaxes=True,
                         shared_yaxes=True, vertical_spacing=0.1)
+    shown = set()  # legend entry on the first subplot where a method appears
     for n, t in enumerate(TASKS):
         r, c = n // 2 + 1, n % 2 + 1
         for m in METHODS:
@@ -95,15 +96,16 @@ def fig_best(C, out):
                                 hovertemplate=label(ch) + " cand %{x}: best %{y:.3f}<extra></extra>", row=r, col=c)
                 fig.add_scatter(x=np.arange(len(ch["rate"])), y=ch["rate"], mode="lines",
                                 line=dict(color=COL[m], width=1, dash="dash"), opacity=0.35, name=m.upper() + " raw",
-                                legendgroup=m + "_raw", showlegend=n == 0 and ch is chs[0],
+                                legendgroup=m + "_raw", showlegend=m not in shown and ch is chs[0],
                                 hovertemplate=label(ch) + " cand %{x}: rate %{y:.3f}<extra></extra>", row=r, col=c)
             if curves:  # mean only where every chain of the method is known
                 L = min(map(len, curves))
                 fig.add_scatter(x=np.arange(L), y=np.mean([y[:L] for y in curves], 0), mode="lines+markers",
                                 line=dict(color=COL[m], width=3), marker=dict(size=4), name=m.upper(),
-                                legendgroup=m, showlegend=n == 0,
+                                legendgroup=m, showlegend=m not in shown,
                                 hovertemplate=m.upper() + f" cand %{{x}}: mean best %{{y:.3f}} ({len(curves)} chains)<extra></extra>",
                                 row=r, col=c)
+                shown.add(m)
     fig.update_xaxes(range=[-0.5, 29.5], dtick=5)
     fig.update_xaxes(title_text="candidates evaluated (0 = z=0)", row=2)
     fig.update_yaxes(range=[-0.03, 1.05], dtick=0.25)
