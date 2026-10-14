@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run each line of FILE as a shell command on one A100, at most PAR at a time, in file order.
 # Lines may chain steps with && and use $POLICY. Logs: <FILE dir>/logs-JOB/, incl. gpu.csv, ram.csv (job cgroup MB).
-# sbatch steer_lines.sbatch FILE [PAR=1]
+# sbatch steer_lines.sbatch FILE [PAR=1]; in a job array, %a in FILE is replaced by the array index
 #SBATCH --job-name=steer-lines
 #SBATCH --account=grp_hbenamor
 #SBATCH --partition=htc
@@ -24,7 +24,7 @@ export TMPDIR=$(mktemp -d /tmp/steer-XXXXXX)  # vector-env forkserver sockets fa
 export POLICY="$THESIS_DATA_ROOT/models/smolvla-libero-local"
 hostname
 python -m research.pretrained.prepare_policy
-FILE=$(realpath "$1") PAR=${2:-1}
+FILE=$(realpath "${1//%a/${SLURM_ARRAY_TASK_ID:-}}") PAR=${2:-1}
 logs="$(dirname "$FILE")/logs-${SLURM_JOB_ID:?Run using sbatch}"
 mkdir -p "$logs"
 nvidia-smi --query-gpu=timestamp,memory.used,utilization.gpu --format=csv,noheader -l 10 > "$logs/gpu.csv" &

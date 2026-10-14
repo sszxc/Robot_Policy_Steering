@@ -1,0 +1,2 @@
+python -m research.ticket --policy $POLICY --task-id 9 --inject noise --dim 1600 --box 3 --cem-sigma 1 --batch-size 32 --output-dir /scratch/xzhan742/thesis/results/smolvla/ticket/t9/noise1600
+python -m research.ticket --policy $POLICY --task-id 4 --inject noise --dim 1600 --box 3 --cem-sigma 1 --batch-size 32 --output-dir /scratch/xzhan742/thesis/results/smolvla/ticket/t4/noise1600

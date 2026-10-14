@@ -1,0 +1,2 @@
+python -m research.ticket --policy $POLICY --task-id 7 --inject expert_film --dim 8 --zero --batch-size 32 --output-dir /scratch/xzhan742/thesis/results/smolvla/ticket/t7/film8
+python -m research.ticket --policy $POLICY --task-id 7 --inject noise --dim 8 --box 3 --cem-sigma 1 --batch-size 32 --output-dir /scratch/xzhan742/thesis/results/smolvla/ticket/t7/noise8
