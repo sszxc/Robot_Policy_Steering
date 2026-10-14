@@ -64,7 +64,8 @@ images (text only), and CEM. The best z of every chain is then re-evaluated on 3
 <h2>Sample efficiency</h2>
 <figure><!--fig:best--><figcaption>Best success rate found so far vs number of candidates evaluated (x = 0 is z = 0).
 Thin solid lines: best-so-far of single chains; chains that reached 8/8 are carried forward at 1.0.
-Dashed lines: raw success rate of each candidate of the same chains (click a legend entry to toggle). Bold: mean over chains, drawn only up to the index every chain has reached.</figcaption></figure>
+Shaded band: 25–75% range of the raw success rate of the candidate at that index, over the chains of the method
+still running there (solved chains stop, so late bands rest on fewer chains; click a legend entry to toggle). Bold: mean over chains, drawn only up to the index every chain has reached.</figcaption></figure>
 <figure><!--fig:solved--><figcaption>Fraction of chains that have reached ≥ 6/8 (left) or 8/8 (right) within x candidates,
 pooled over tasks. Curves are drawn only up to the index where the outcome of every chain is known.
 LLM-PERM covers only t7 and t9 (the two hardest inits), so its pooled curve is not directly comparable to the others.</figcaption></figure>

@@ -62,6 +62,10 @@ def horizon(ch, thr=1.0):
     return ch["budget"] if first_hit(ch, thr) is not None or ch["finished"] else len(ch["cands"])
 
 
+def rgba(hex_col, a):
+    return "rgba({},{},{},{})".format(*(int(hex_col[i:i + 2], 16) for i in (1, 3, 5)), a)
+
+
 def label(ch):
     return f"t{ch['task']} i{ch['init']} r{ch['rep']} {ch['method']}"
 
@@ -94,10 +98,17 @@ def fig_best(C, out):
                 fig.add_scatter(x=np.arange(len(y)), y=y, mode="lines", line=dict(color=COL[m], width=1),
                                 opacity=0.35, name=label(ch), legendgroup=m + "_chain", showlegend=False,
                                 hovertemplate=label(ch) + " cand %{x}: best %{y:.3f}<extra></extra>", row=r, col=c)
-                fig.add_scatter(x=np.arange(len(ch["rate"])), y=ch["rate"], mode="lines",
-                                line=dict(color=COL[m], width=1, dash="dash"), opacity=0.35, name=m.upper() + " raw",
-                                legendgroup=m + "_raw", showlegend=m not in shown and ch is chs[0],
-                                hovertemplate=label(ch) + " cand %{x}: rate %{y:.3f}<extra></extra>", row=r, col=c)
+            if chs:  # raw rate 25-75% over the chains still running at each index
+                X = np.arange(max(len(ch["rate"]) for ch in chs))
+                live = [[ch["rate"][x] for ch in chs if len(ch["rate"]) > x] for x in X]
+                q = np.array([np.percentile(v, [25, 75]) for v in live])
+                fig.add_scatter(x=X, y=q[:, 0], mode="lines", line=dict(width=0), legendgroup=m + "_raw",
+                                showlegend=False, hoverinfo="skip", row=r, col=c)
+                fig.add_scatter(x=X, y=q[:, 1], mode="lines", line=dict(width=0), fill="tonexty",
+                                fillcolor=rgba(COL[m], 0.18), name=m.upper() + " raw 25–75%", legendgroup=m + "_raw",
+                                showlegend=m not in shown, customdata=np.c_[q[:, 0], [len(v) for v in live]],
+                                hovertemplate=m.upper() + " cand %{x}: raw rate 25–75% [%{customdata[0]:.2f}, %{y:.2f}]"
+                                              " (%{customdata[1]} chains)<extra></extra>", row=r, col=c)
             if curves:  # mean only where every chain of the method is known
                 L = min(map(len, curves))
                 fig.add_scatter(x=np.arange(L), y=np.mean([y[:L] for y in curves], 0), mode="lines+markers",
@@ -110,7 +121,7 @@ def fig_best(C, out):
     fig.update_xaxes(title_text="candidates evaluated (0 = z=0)", row=2)
     fig.update_yaxes(range=[-0.03, 1.05], dtick=0.25)
     fig.update_yaxes(title_text="best success so far", col=1)
-    save(fig, out, "best", title="Best-so-far per chain (thin), raw rate per candidate (dashed), per-method mean of best-so-far (bold)", height=620)
+    save(fig, out, "best", title="Best-so-far: chains (thin), method mean (bold); raw rate 25–75% (band)", height=620)
 
 
 def fig_solved(C, out):
