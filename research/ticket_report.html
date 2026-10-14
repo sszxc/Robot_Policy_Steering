@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SmolVLA per-task search: FiLM-z vs Golden-Ticket noise</title>
+<title>FiLM-z vs Noise Tickets</title>
 <script src="plotly.min.js"></script>
 <style>
 :root { --bg:#fcfcfb; --fg:#1b1b1a; --muted:#5f5e5a; --line:#e4e3df; --code:#f1f0ec; --acc:#2a78d6; --card:#ffffff; }
@@ -40,7 +40,7 @@ full 1600-dim noise (GT). Question: at a small, equal budget, which space gives 
 <li><b>CEM</b> (all arms): population 6, 2 elites, mean/σ update σ ← max(½σ + ½·std(elites), 0.1), start N(0, σ₀²) with
   σ₀ = 0.5 (FiLM) or 1 (noise, the prior), 0.1 grid. Candidate 0 = z = 0. Budget 48 candidates (8 generations) = 384
   search episodes, as the steer2 grid (48 z × 8 inits). A chain stops early when a candidate reaches 8/8.</li>
-<li>Machine: local RTX 4090 laptop (Sol was in maintenance), one chain per (task, arm). steer2 numbers are from Sol A100s;
+<li>Machine: local RTX 4090 laptop (Sol was in maintenance), two CEM chains (repeats) per (task, arm) for FiLM-z8 and noise-z8, one for noise-1600 (t0, t7 only). steer2 numbers are from Sol A100s;
   rollouts are not bit-reproducible across machines, so steer2 values are a reference, not a pair.</li>
 <li>Code: <code>research/ticket.py</code>, <code>research/inject/noise.py</code>, queue
   <code>experiments/libero/ticket/local.sh</code>, figures <code>research/plot_ticket.py</code>.</li>
@@ -55,9 +55,40 @@ the steer2 FiLM grid pick for random W seed 0 (Sol) as reference.</figcaption></
 <figure><!--fig:gen0--><figcaption>Generation 0 = 5 random draws from the CEM start distribution per chain (z = 0 excluded):
 how often an unoptimized sample of each space already works.</figcaption></figure>
 
-<h2>Why fixed noise fails here: the policy freezes</h2>
-<!--DIAG-->
+<h2>Fixed noise can freeze the policy (t0)</h2>
+<p>With replanning every step, a fixed x₀ makes the policy a deterministic map from observation to action. On t0 most
+fixed tickets stall: the arm reaches the scene, then barely moves until the time limit. Check on t0 inits 0–3
+(scratch script, 1600-dim tickets, end-effector motion averaged over the last 50 steps):</p>
+<table><tr><th>flow noise</th><th>success</th><th>late-step EEF motion</th><th>EEF path</th></tr>
+<tr><td>random per call (base policy)</td><td>2/4</td><td>2–5 mm/step</td><td>–</td></tr>
+<tr><td>one random N(0, I) ticket</td><td>0/4</td><td>0.04–0.28 mm/step</td><td>≈ 0.5 m</td></tr>
+<tr><td>zero noise</td><td>0/4</td><td>0.01–0.48 mm/step</td><td>–</td></tr></table>
+<p>Noise injection itself was checked (per-sample, deterministic, changes the actions), so this is a property of the
+fixed-noise setting, not a bug. It matches the search logs: zero noise scores 0/8 on t0 and t4, and most generation-0 noise
+draws score 0/8, while on t7 and t9 fixed noise works about as well as random noise. FiLM z keeps the random flow noise and
+does not have this failure mode.</p>
 
 <h2>Takeaways</h2>
-<!--TAKEAWAYS-->
+<div class="key">
+<p><b>FiLM-z8 is the more reliable space, not uniformly the better one.</b> Mean held-out over the 10 chains (5 tasks × 2):
+FiLM-z8 0.89, noise-z8 0.79, z = 0 0.71. FiLM improves on z = 0 in 6/10 chains (sign test p &lt; 0.05) and never gets worse
+(worst chain 0.67). noise-z8 improves in 5/10 chains but is significantly <i>worse</i> than z = 0 in 2 (t0 r1 0.10, t4 r1 0.20).</p>
+</div>
+<ul>
+<li><b>By task.</b> t0: FiLM 0.95 / 0.85 vs noise 0.73 / 0.10. t7: noise wins clearly (1.00 / 0.97 vs FiLM 0.67 / 0.70).
+  t9: both near the ceiling (z = 0 0.88). t4 and t2 are saturated, except the failed noise chain on t4.</li>
+<li><b>Noise failure mode.</b> On t0 and t4, zero noise and most prior samples score 0/8 (frozen policy, see above). CEM then
+  has no gradient: t0 noise-z8 r1 and t0 noise-1600 used all 48 candidates at 0/8, and the pick falls back to candidate 0
+  (zero noise, held-out 0.10). Full 1600-dim noise is no better than the 8-dim subspace at this budget (t0 0.10, t7 0.97).</li>
+<li><b>FiLM failure mode.</b> t7 FiLM chains reach 8/8 on the search inits but only 0.67–0.70 held-out: the pick overfits
+  8 noisy episodes. The steer2 grid pick for the same W reached 0.90 on Sol, so better z exist in the space; re-evaluating
+  the top-k candidates before picking is the obvious fix.</li>
+<li><b>Budget.</b> 48 candidates × 8 episodes, far below GT's ~1000 tickets × several envs. The claim supported here is
+  limited to small budgets.</li>
+<li><b>Caveats.</b> Two chains per (task, arm); local RTX 4090, not paired with the Sol steer2 runs. Noise arms are
+  deterministic, so their two held-out reps per init differ only by env randomness (≈ 30 effective inits), and their sign
+  tests overstate significance. CEM draws use the same RNG stream across arms.</li>
+<li><b>Next.</b> Re-run on Sol (lines in <code>experiments/libero/ticket/lines/</code>) with more chains per task, plus top-k
+  re-evaluation for FiLM, before claiming FiLM-z beats noise search.</li>
+</ul>
 </body></html>
