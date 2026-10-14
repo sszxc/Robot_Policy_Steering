@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmolVLA per-task search: FiLM-z vs Golden-Ticket noise</title>
+<script src="plotly.min.js"></script>
+<style>
+:root { --bg:#fcfcfb; --fg:#1b1b1a; --muted:#5f5e5a; --line:#e4e3df; --code:#f1f0ec; --acc:#2a78d6; --card:#ffffff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; } }
+:root[data-theme="dark"] { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; }
+body { background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+h1 { font-size:1.6em; margin-bottom:.3em; } h2 { font-size:1.2em; margin-top:2em; border-bottom:1px solid var(--line); padding-bottom:.2em; }
+a { color:var(--acc); } code { background:var(--code); padding:1px 4px; border-radius:3px; font-size:.9em; }
+table { border-collapse:collapse; margin:.8em 0; font-size:.85em; display:block; overflow-x:auto; }
+th, td { border:1px solid var(--line); padding:3px 7px; text-align:left; white-space:nowrap; }
+th { background:var(--code); }
+figure { margin:1.4em 0; } figure > div { background:#fff; border-radius:4px; overflow-x:auto; }
+figcaption { color:var(--muted); font-size:.87em; margin-top:.4em; }
+pre.vlm { background:var(--code); padding:.6em .9em; border-radius:4px; white-space:pre-wrap; font-size:.85em; }
+.key { border-left:3px solid var(--acc); padding:.2em .9em; margin:1em 0; }
+</style></head><body>
+<h1>Per-task search on LIBERO-Object: FiLM-z vs Golden-Ticket noise (SmolVLA)</h1>
+<p>Baseline round after <a href="smolvla_steer2_object.html">steering round 2</a> and the
+<a href="smolvla_icl_object.html">ICL optimization</a>. <a href="https://arxiv.org/abs/2603.15757">Golden Ticket</a>
+(GT) improves the same checkpoint by replacing the random initial flow noise with one fixed, searched noise tensor.
+Here the same CEM, budget and inits search three spaces: our FiLM z (d = 8), an 8-dim subspace of the noise, and the
+full 1600-dim noise (GT). Question: at a small, equal budget, which space gives better held-out success?</p>
+
+<h2>Setup</h2>
+<ul>
+<li>Policy <code>HuggingFaceVLA/smolvla_libero</code> (the GT checkpoint), suite <code>libero_object</code>, tasks
+  t0, t7, t9, t4, t2 (as steer2), replanning every step (<code>n_action_steps = 1</code>, also GT's setting).</li>
+<li><b>Protocol (per task, as steer2)</b>: each candidate runs once on each search init 0–7 (rate = successes / 8; ties by
+  mean steps of the successes). The best candidate of a chain is re-run on held-out inits 10–39 × 2 reps (n = 60), paired
+  with z = 0 on the same (init, rep). Held-out flow-noise seeds are steer2's (seed + init + 1000·rep).</li>
+<li><b>FiLM-z8</b>: as steer2 / ICL. FiLM on the action-expert MLP outputs of layers 7, 15, 23, 31, [γ;β] = α·W·z, random
+  W (seed 0), α = 0.3, z ∈ [−1.5, 1.5]⁸. Flow noise is random but paired per (init, chain).</li>
+<li><b>noise-z8</b>: fixed initial noise x₀ = U·z at every denoising call, U = random orthonormal 1600×8 columns × √200 (so
+  z ~ N(0, I) gives x₀ entries ~ N(0, 1)), z ∈ [−3, 3]⁸. <b>noise-1600</b>: U = I, i.e. GT's ticket. With a fixed x₀ the
+  policy is deterministic; z = 0 is the zero-noise policy, not the base policy.</li>
+<li><b>CEM</b> (all arms): population 6, 2 elites, mean/σ update σ ← max(½σ + ½·std(elites), 0.1), start N(0, σ₀²) with
+  σ₀ = 0.5 (FiLM) or 1 (noise, the prior), 0.1 grid. Candidate 0 = z = 0. Budget 48 candidates (8 generations) = 384
+  search episodes, as the steer2 grid (48 z × 8 inits). A chain stops early when a candidate reaches 8/8.</li>
+<li>Machine: local RTX 4090 laptop (Sol was in maintenance), one chain per (task, arm). steer2 numbers are from Sol A100s;
+  rollouts are not bit-reproducible across machines, so steer2 values are a reference, not a pair.</li>
+<li>Code: <code>research/ticket.py</code>, <code>research/inject/noise.py</code>, queue
+  <code>experiments/libero/ticket/local.sh</code>, figures <code>research/plot_ticket.py</code>.</li>
+</ul>
+
+<h2>Results</h2>
+<!--fig:tab_summary-->
+<figure><!--fig:heldout--><figcaption>Held-out success of each chain's best z and of z = 0 (local, same held-out pairs), with
+the steer2 FiLM grid pick for random W seed 0 (Sol) as reference.</figcaption></figure>
+<figure><!--fig:search--><figcaption>Search curves: success of every candidate on inits 0–7 (dots) and the best so far (lines).
+</figcaption></figure>
+<figure><!--fig:gen0--><figcaption>Generation 0 = 5 random draws from the CEM start distribution per chain (z = 0 excluded):
+how often an unoptimized sample of each space already works.</figcaption></figure>
+
+<h2>Why fixed noise fails here: the policy freezes</h2>
+<!--DIAG-->
+
+<h2>Takeaways</h2>
+<!--TAKEAWAYS-->
+</body></html>
