@@ -67,23 +67,26 @@ def save(fig, out, name):
                                                   config={"displaylogo": False}, div_id=name))
 
 
-def fig_search(data, out):
+def fig_search(data, out, budget=48):
+    """Mean best-so-far over chains (early-stopped chains carry their last value), band = min-max over chains."""
     tasks = [t for t in TASKS if any((t, a) in data for a in ARMS)]
     fig = make_subplots(1, len(tasks), subplot_titles=[f"t{t}" for t in tasks], shared_yaxes=True)
-    shown = set()
+    x, shown = np.arange(budget), set()
     for col, t in enumerate(tasks, 1):
         for a in ARMS:
-            for r, c in data.get((t, a), {}).get("chains", {}).items():
-                x = [x["i"] for x in c]
-                fig.add_trace(go.Scatter(x=x, y=[x["rate"] for x in c], mode="markers", marker=dict(color=COL[a], size=5, opacity=0.35),
-                                         showlegend=False, hovertemplate=f"{NAME[a]} r{r} cand %{{x}}: %{{y:.3f}}<extra></extra>"), 1, col)
-                fig.add_trace(go.Scatter(x=x, y=best_so_far(c), mode="lines", line=dict(color=COL[a], dash="solid" if r == 0 else "dash"),
-                                         name=NAME[a], legendgroup=a, showlegend=a not in shown,
-                                         hovertemplate=f"{NAME[a]} r{r} cand %{{x}}: best %{{y:.3f}}<extra></extra>"), 1, col)
-                shown.add(a)
+            chains = list(data.get((t, a), {}).get("chains", {}).values())
+            if not chains:
+                continue
+            Y = np.array([np.pad(best_so_far(c), (0, budget - len(c)), mode="edge") for c in chains])
+            fig.add_trace(go.Scatter(x=np.r_[x, x[::-1]], y=np.r_[Y.max(0), Y.min(0)[::-1]], fill="toself", fillcolor=COL[a],
+                                     opacity=0.15, line=dict(width=0), legendgroup=a, showlegend=False, hoverinfo="skip"), 1, col)
+            fig.add_trace(go.Scatter(x=x, y=Y.mean(0), mode="lines", line=dict(color=COL[a], width=2.5), name=NAME[a],
+                                     legendgroup=a, showlegend=a not in shown,
+                                     hovertemplate=f"{NAME[a]} cand %{{x}}: mean best %{{y:.3f}} ({len(chains)} chains)<extra></extra>"), 1, col)
+            shown.add(a)
     fig.update_xaxes(title_text="candidate (0 = z=0)")
-    fig.update_yaxes(title_text="success on search inits 0–7", range=[-0.05, 1.05], row=1, col=1)
-    fig.update_layout(**LAYOUT, height=360, title="Search: candidate success (dots) and best so far (lines; dashed = repeat 1)")
+    fig.update_yaxes(title_text="best success so far, inits 0–7", range=[-0.05, 1.05], row=1, col=1)
+    fig.update_layout(**LAYOUT, height=360, title="Search: mean best-so-far over chains (band = min–max over chains)")
     save(fig, out, "search")
 
 
@@ -110,31 +113,41 @@ def fig_gen0(data, out):
 
 
 def fig_heldout(data, steer2, out):
+    """Mean held-out success over chains per (task, arm), bar = min-max over chains; 'mean' = average over the 5 tasks."""
     fig = go.Figure()
     shown = set()
+    per = {}  # (task, arm) -> per-chain held-out rates
     for t in TASKS:
-        rows = []
         if (z := zero_held(data, t)):
-            rows.append(("zero", "z=0", z["success"]))
+            per[t, "zero"] = [z["rate"]]
         for a in ARMS:
-            for k, h in sorted(data.get((t, a), {}).get("held", {}).items()):
-                if k != "zero":
-                    rows.append((a, f"{NAME[a]} {k}", h["success"]))
-        for a, lab, s in rows:
-            p, lo, hi = wilson(sum(s), len(s))
-            fig.add_trace(go.Scatter(x=[[f"t{t}"], [lab]], y=[p], error_y=dict(type="data", symmetric=False, array=[hi - p], arrayminus=[p - lo]),
-                                     mode="markers", marker=dict(color=COL[a], size=9), name=NAME[a], legendgroup=a, showlegend=a not in shown,
-                                     hovertemplate=f"t{t} {lab}: %{{y:.3f}} (n={len(s)})<extra></extra>"))
+            r = [h["rate"] for k, h in sorted(data.get((t, a), {}).get("held", {}).items()) if k != "zero"]
+            if r:
+                per[t, a] = r
+    for a in ("zero",) + ARMS:
+        if all((t, a) in per for t in TASKS):
+            per["mean", a] = [np.mean([np.mean(per[t, a]) for t in TASKS])]
+    for t in TASKS + ("mean",):
+        lab_t = "mean" if t == "mean" else f"t{t}"
+        for a in ("zero",) + ARMS:
+            if (t, a) not in per:
+                continue
+            r = np.array(per[t, a])
+            m = r.mean()
+            fig.add_trace(go.Scatter(x=[[lab_t], [NAME[a]]], y=[m], error_y=dict(type="data", symmetric=False, array=[r.max() - m],
+                                     arrayminus=[m - r.min()]), mode="markers", marker=dict(color=COL[a], size=10), name=NAME[a],
+                                     legendgroup=a, showlegend=a not in shown,
+                                     hovertemplate=f"{lab_t} {NAME[a]}: mean %{{y:.3f}}, chains {', '.join(f'{v:.2f}' for v in r)}<extra></extra>"))
             shown.add(a)
         for h in steer2.get("heldout", []):
             if h["task"] == t and h["w"] == "random-s0":
-                fig.add_trace(go.Scatter(x=[[f"t{t}"], ["steer2 grid pick (Sol)"]], y=[h["held"]], mode="markers",
+                fig.add_trace(go.Scatter(x=[[lab_t], ["steer2 pick"]], y=[h["held"]], mode="markers",
                                          marker=dict(color=COL["steer2"], size=9, symbol="diamond-open"), name="steer2 FiLM grid pick, random-s0 (Sol)",
                                          legendgroup="steer2", showlegend="steer2" not in shown,
                                          hovertemplate=f"t{t} steer2 pick: %{{y:.3f}}; steer2 z=0 {h['zero']:.3f}<extra></extra>"))
                 shown.add("steer2")
     fig.update_layout(**LAYOUT, height=420, yaxis=dict(title="held-out success (inits 10–39 × 2)", range=[-0.05, 1.05]),
-                      title="Held-out: best z per chain vs z=0, 95% Wilson intervals")
+                      title="Held-out: mean over chains of each chain's best z (bar = min–max over chains)")
     save(fig, out, "heldout")
 
 
