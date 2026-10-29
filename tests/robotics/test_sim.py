@@ -119,3 +119,15 @@ def test_rl_envs_block_finger_pass_through():
             s.reset(hand_q=H.OPEN)
             s.move_hand(q, 1.0)
             assert _max_self_penetration(m, s.d.qpos) < 0.004
+
+
+def test_lab_frames_match_ros_and_home_holds():
+    # ROS (xacro, zero config): tool0 / hand_palm_center world positions; home: palm 0.6 m above the tabletop.
+    s = Sim(scene.lab_scene().compile())
+    mujoco.mj_forward(s.m, s.d)
+    assert np.allclose(s.site_pos("tool0"), [0.749936, -0.440775, 0.993074], atol=1e-5)
+    assert np.allclose(s.site_pos("palm_center"), [0.809175, -0.381223, 0.992529], atol=1e-5)
+    s.reset(arm_q=scene.LAB_HOME, hand_q=H.OPEN)
+    s.hold(1.0)
+    assert s.d.ncon == 0
+    assert np.linalg.norm(s.site_pos("palm_center") - (s.site_pos("table_surface_center") + [0, 0, 0.6])) < 0.005

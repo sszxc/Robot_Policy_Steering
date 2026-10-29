@@ -5,10 +5,12 @@ Install the project editable (`python -m pip install --no-build-isolation --no-d
 ## View a scene
 
 ```
-python -m robotics.sim.view [hand|arm]
+python -m robotics.sim.view [hand|arm|lab]
 ```
 
-Default is `arm` (UR5e + hand). `hand` is the hand alone.
+Default is `arm` (UR5e + hand). `hand` is the hand alone. `lab` is the real workcell (`scene.lab_scene()`, from ros2_ur):
+calibrated UR5 on its stand, HX5 on the -90° mount, table, wall and camera rig, in the ROS `world` frame, starting at
+the ros2_ur palm home (`scene.LAB_HOME`). Sites `tool0`, `palm_center` and `table_surface_center` match the ROS frames.
 
 ## Scripted tasks
 

@@ -83,6 +83,27 @@ def arm_hand(base_height=0.0):
     return spec
 
 
+LAB_BASE_POS, LAB_BASE_QUAT = [0.036, 0, 1.0], [0.923879533, 0, 0, -0.382683432]  # ros2_ur base_link: on stand, yaw -45°
+# ros2_ur palm home (home_palm.py): palm_center 0.6 m above table_surface_center, palm down, fingers toward world -y.
+# IK solution; real recorded episode starts are within 6 mrad of it.
+LAB_HOME = np.array([-0.9773, -0.9176, 1.8328, -4.0568, -1.3846, 3.1437])
+
+
+def lab_scene():
+    """Real lab workcell from ros2_ur: calibrated UR5 on its stand, HX5 on the -90° mount, table, wall, camera rig.
+    World frame = ROS world; sites: tool0, table_surface_center, palm_center (ROS hand_palm_center)."""
+    spec = _base()
+    spec.worldbody.add_frame().attach_body(mujoco.MjSpec.from_file(str(MJ / "lab" / "workcell.xml")).body("workcell"), "", "")
+    arm = mujoco.MjSpec.from_file(str(MJ / "lab" / "ur5.xml"))
+    hand = _hand()
+    hand.body("hand_base").add_site(name="palm_center", pos=[0, 0, 0.06], quat=[0.707106781, 0, 0.707106781, 0])
+    hand.body("hand_base").gravcomp = 1  # the arm carries the palm without sag; fingers stay uncompensated
+    hand.joint("finger_r_joint2").range = [-3.14, 0]  # real thumb yaw limit (ros2_ur); other scenes keep -1.57 (RL ctrl ranges)
+    arm.site("hand_attach").attach_body(hand.body("hand_base"), "", "")
+    spec.worldbody.add_frame(pos=LAB_BASE_POS, quat=LAB_BASE_QUAT).attach_body(arm.body("base"), "", "")
+    return spec
+
+
 def add_table(spec, pos=(0.55, 0, 0), size=(0.3, 0.4), height=0.4):
     """Box table whose top surface is at z=height."""
     b = spec.worldbody.add_body(name="table", pos=[pos[0], pos[1], height / 2])
