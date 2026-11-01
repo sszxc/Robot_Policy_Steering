@@ -96,3 +96,14 @@ of a noisy privileged teacher, and direct vision PPO (asymmetric critic). Code: 
 - Camera: fixed top-down (along −palm normal), 64×64 RGB, 2 stacked frames; pure-JAX ray caster over the collision
   primitives (spheres/capsules/boxes) so it batches inside MJX. Balls red/blue (identity matters for the targets).
 - Vision actor sees pixels + hand proprio + target phase only (no ball state).
+- Results (MJX, 128 eps × 20 s, noisy env unless [clean]; target 7.85 rad = 450°; `baoding_noisy_eval`):
+
+| policy | pair turn (rad/ep) | drop | track err | pixels frozen at reset |
+|---|---|---|---|---|
+| teacher, 49.0M steps (`teacher/best_params.pkl`, 72 min) | 7.88 (100%) | 0.00 | 2.6 mm | — |
+| teacher [clean] | 7.89 | 0.00 | 2.6 mm | — |
+| DAgger student, 10 iters × 192 eps (`dagger/student.pkl`, 12 min) | 7.87 (100%) | 0.00 | 2.6 mm | 2.42, drop 0.33 |
+| DAgger student [clean] | 7.87 | 0.00 | 2.6 mm | 2.40, drop 0.38 |
+
+  Teacher reached the pace by ~11M steps and plateaued from ~23M. DAgger: plain BC (iter 1 rollouts) already 7.63 rad /
+  2% drops; later iters close the gap. Both vision policies collapse with frozen pixels, so they read the balls from the image.
