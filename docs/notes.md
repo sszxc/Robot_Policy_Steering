@@ -80,3 +80,19 @@ sweeps the top layer (CMC −1.4 → 1.0, retract outside), closed-loop on the h
 - RL screwdriver: `python -m robotics.policies.rl.screwdriver_train` (stopped at 68M steps, 3.5 h on shared GPU; plateaued from ~52M; best_params = params_68157440), eval `python -m robotics.policies.rl.screwdriver_eval` → out/rl/screwdriver/screwdriver.mp4. RL model uses a capsule handle (MJX lacks cylinder–box). Caveats: fingertips penetrate up to 4.8 mm (soft contact, 5 solver iters); thumb/index/middle run at the 0.387 Nm limit.
 - RL baoding: two-stage PPO (14.4M steps holding at 8 s/rev, then ~52.8M at 16 s/rev with progress weight 50, split 18.35M + 34.4M resume in stage2b/); tracks the pace until ~20M stage-2 steps, fast flicking from ~23M. Best stage2b/params_32112640 → out/rl/baoding/best_params.pkl, eval `python -m robotics.policies.rl.baoding_eval` → out/rl/baoding/baoding.mp4; pace-tracking 18.35M → pace_params.pkl (`--params out/rl/baoding/pace_params.pkl --video out/rl/baoding/baoding_pace.mp4`). MJX sweep in out/rl/baoding/mjx_eval.txt. Scripted CEM gait failed (144° in 20 s): curled fingertips only reach the finger-side half of the palm, so nothing pushes balls toward the wrist.
 - RL pen: pen rests on the proximal phalanges of slightly curled fingers (flat on the palm it can't be pushed sideways → first 110M-step run learned to hold still). Reward 2·yaw rate (clip ±3 rad/s), small offset/tilt terms, drop −10; NaN-safe obs. 204M steps (~2.1 h), best 183.5M → out/rl/pen/best_params.pkl; eval `python -m robotics.policies.rl.pen_eval`, exploit checks `python -m robotics.policies.rl.pen_check` → out/rl/pen/pen.mp4. Index/middle/ring drive CCW, ring/pinky CW; thumb unused; pen also rolls about its own axis while yawing.
+
+## Baoding: noisy teacher → vision policy (plan 2026-10-31; sim only, no real robot)
+Goal: pace-tracking Baoding from a top-down RGB camera. Two students from the same noisy env: DAgger distillation
+of a noisy privileged teacher, and direct vision PPO (asymmetric critic). Code: `robotics/policies/rl/baoding_noisy_*`,
+`baoding_render.py`, `baoding_dagger.py`.
+- Step 0 (`baoding_check.py`): both old checkpoints are closed-loop: ball obs frozen at reset → pair turn 64.6 → 0.7
+  rad/ep (best), 7.6 → 0.8 (pace); a 0.15 m/s ball kick at 10 s changes nothing.
+- Reward: tracking `Σ exp(-err/15mm)` + `w_turn · clip(Δpair, -0.3, ω·dt)` (progress capped at the target pace, so
+  flicking faster earns nothing) − action² − 50·drop. Period 16 s, one direction.
+- Noise (actor side): ball pos σ 2 mm/step + per-episode bias σ 1 mm, last 3 ball positions instead of ball velocity,
+  joint pos/vel noise, action noise σ 0.05, per-episode 0/1-step action delay, random ball kicks (~1%/step), random
+  start phase (balls placed on the orbit, target starts aligned). No physics randomization (no sim2real goal).
+- Critic sees the clean 78-dim privileged obs (+ delay flag, ball bias).
+- Camera: fixed top-down (along −palm normal), 64×64 RGB, 2 stacked frames; pure-JAX ray caster over the collision
+  primitives (spheres/capsules/boxes) so it batches inside MJX. Balls red/blue (identity matters for the targets).
+- Vision actor sees pixels + hand proprio + target phase only (no ball state).
