@@ -9,6 +9,7 @@ import time
 
 import jax
 import jax.numpy as jnp
+from brax.training.acme import running_statistics
 from brax.training.agents.ppo import networks as ppo_networks, networks_vision, train as ppo
 
 from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv
@@ -25,6 +26,14 @@ def make_net(vision):
                                  policy_hidden_layer_sizes=(512, 256, 128), value_hidden_layer_sizes=(512, 256, 128))
     return functools.partial(ppo_networks.make_ppo_networks, policy_obs_key="state", value_obs_key="privileged_state",
                              policy_hidden_layer_sizes=(512, 256, 128), value_hidden_layer_sizes=(512, 256, 128))
+
+
+def load_policy(path, vision, env):
+    """Deterministic batched brax policy: obs dict (N, ...) -> actions (N, 20)."""
+    shapes = {k: (v,) if isinstance(v, int) else v for k, v in env.observation_size.items()}
+    net = make_net(vision)(shapes, 20, preprocess_observations_fn=running_statistics.normalize)
+    pol = ppo_networks.make_inference_fn(net)(pickle.load(open(path, "rb")), deterministic=True)
+    return jax.jit(lambda obs: pol(obs, jax.random.PRNGKey(0))[0])
 
 
 if __name__ == "__main__":
