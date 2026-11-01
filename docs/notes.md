@@ -104,6 +104,14 @@ of a noisy privileged teacher, and direct vision PPO (asymmetric critic). Code: 
 | teacher [clean] | 7.89 | 0.00 | 2.6 mm | — |
 | DAgger student, 10 iters × 192 eps (`dagger/student.pkl`, 12 min) | 7.87 (100%) | 0.00 | 2.6 mm | 2.42, drop 0.33 |
 | DAgger student [clean] | 7.87 | 0.00 | 2.6 mm | 2.40, drop 0.38 |
+| vision PPO, 48.0M steps (`vision_rl/best_params.pkl`, 2.5 h) | 7.80 (99%) | 0.01 | 3.5 mm | 0.68, drop 0.43 |
+| vision PPO [clean] | 7.70 | 0.02 | 3.9 mm | 0.70, drop 0.38 |
 
   Teacher reached the pace by ~11M steps and plateaued from ~23M. DAgger: plain BC (iter 1 rollouts) already 7.63 rad /
   2% drops; later iters close the gap. Both vision policies collapse with frozen pixels, so they read the balls from the image.
+  Vision PPO (512 envs, ~6.7k steps/s): pace by ~2M steps, plateau from ~15M (99% pace, 1% drops, 4.8 mm);
+  checkpoints 14.6M–60.6M all 98–101% pace, 0–3% drops, 3.6–4.8 mm. Repeat evals of one checkpoint vary
+  ~±0.05 rad / ±1% drop (GPU nondeterminism). Verdict: both routes work in sim; teacher + DAgger took 84 min
+  (72 + 12) vs 2.5 h for vision PPO and matches the teacher exactly; vision PPO tracks ~1 mm worse.
+  Caveats: images are flat-shaded collision primitives from a fixed camera, no image noise/augmentation,
+  and the target phase is given to the policy; not a sim2real result.

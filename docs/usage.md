@@ -46,6 +46,8 @@ Shared arguments: `--steps` env steps, `--envs` parallel envs, `--evals` evals d
 | `python -m robotics.policies.rl.pen_train` | `--steps 150000000 --envs 4096 --evals 30 --out out/rl/pen` | `--condim 3` contact dimension, `--w_rate 2.0` spin-rate reward weight, `--drop_penalty 10.0` |
 | `python -m robotics.policies.rl.baoding_train` | `--steps 80000000 --envs 2048 --evals 25 --out out/rl/baoding` | `--period 8` seconds per target revolution, `--w_turn 10` rotation-progress reward weight |
 | `python -m robotics.policies.rl.rubik_train` | `--steps 60000000 --envs 4096 --evals 30 --out out/rl/rubik` | |
+| `python -m robotics.policies.rl.baoding_noisy_train` | `--steps 50000000 --envs 2048 --evals 25 --out out/rl/baoding_noisy/teacher` | Noisy env, pace-capped reward, critic sees privileged state. `--vision`: top-down 64 px RGB actor (defaults `--envs 1024` (512 fits a 16 GB laptop GPU), `--out out/rl/baoding_noisy/vision_rl`); `--period 16`, `--w_turn 50` |
+| `python -m robotics.policies.rl.baoding_dagger` | `--teacher out/rl/baoding_noisy/teacher/best_params.pkl --iters 10 --envs 192 --grad_steps 3000 --out out/rl/baoding_noisy/dagger` | Distills the teacher into an RGB student (`student.pkl`); `--w_aux 0.1` ball-position loss. Keeps all frames in RAM (~1 GB per iteration) |
 
 ### CPU eval (video)
 
@@ -72,6 +74,8 @@ MUJOCO_GL=egl python -m robotics.policies.rl.<name> [--params path.pkl] ...
 |---|---|
 | `python -m robotics.policies.rl.pen_mjx_eval` | `--params out/rl/pen/best_params.pkl`, `--episodes 64` |
 | `python -m robotics.policies.rl.baoding_mjx_eval` | `--params out/rl/baoding/best_params.pkl`, `--period 16`, `--episodes 64` |
+| `python -m robotics.policies.rl.baoding_check` | `--params out/rl/baoding/best_params.pkl`, `--period 16`, `--episodes 64`: normal vs ball obs frozen at reset vs a mid-episode kick |
+| `MUJOCO_GL=egl python -m robotics.policies.rl.baoding_noisy_eval` | `--teacher` / `--vision_rl` / `--student` (any subset), `--episodes 64`, `--clean` (noise off), `--video` → `out/rl/baoding_noisy/<name>.mp4` (MuJoCo view + 64 px policy view). Vision policies also run with pixels frozen at reset |
 
 ### Smoke
 
