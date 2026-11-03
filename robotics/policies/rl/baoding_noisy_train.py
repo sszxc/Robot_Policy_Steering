@@ -1,5 +1,6 @@
 """Brax PPO on BaodingNoisyEnv: noisy privileged teacher (default) or direct vision policy (--vision; critic stays
-privileged). Example: XLA_PYTHON_CLIENT_MEM_FRACTION=0.45 python -m robotics.policies.rl.baoding_noisy_train --steps 50_000_000"""
+privileged). Example: XLA_PYTHON_CLIENT_MEM_FRACTION=0.45 python -m robotics.policies.rl.baoding_noisy_train --steps 50_000_000
+v2 (speed command + MuJoCo Warp): add --periods 2 16 --warp"""
 from platforms.paths import output_path
 import argparse
 import functools
@@ -42,12 +43,14 @@ if __name__ == "__main__":
     p.add_argument("--vision", action="store_true")
     p.add_argument("--period", type=float, default=16.0)
     p.add_argument("--w_turn", type=float, default=50.0)
+    p.add_argument("--periods", type=float, nargs=2, help="v2 speed command: period range (s), log-uniform")
+    p.add_argument("--warp", action="store_true", help="MJX-Warp physics + mesh rendering")
     p.add_argument("--envs", type=int, help="default 2048 (state) / 1024 (vision)")
     p.add_argument("--evals", type=int, default=25)
-    p.add_argument("--out", help="default out/rl/baoding_noisy/{teacher,vision_rl}")
+    p.add_argument("--out", help="default out/rl/baoding_{noisy,cmd}/{teacher,vision_rl}")
     p.add_argument("--restore", help="params .pkl to warm-start from")
     a = p.parse_args()
-    out = a.out or str(output_path("rl/baoding_noisy/" + ("vision_rl" if a.vision else "teacher")))
+    out = a.out or str(output_path(f"rl/baoding_{'cmd' if a.periods else 'noisy'}/" + ("vision_rl" if a.vision else "teacher")))
     os.makedirs(out, exist_ok=True)
     log = open(os.path.join(out, "log.txt"), "a")
     t0 = time.time()
@@ -56,7 +59,7 @@ if __name__ == "__main__":
         n = max(m["eval/avg_episode_length"], 1)
         line = (f"{time.time() - t0:7.0f}s step {step:>11,d}  reward {m['eval/episode_reward']:9.1f}  "
                 f"turn {m['eval/episode_turn']:6.2f} rad  track_err {1000 * m['eval/episode_track_err'] / n:5.1f} mm  "
-                f"drop {m['eval/episode_dropped']:.2f}  len {n:.0f}")
+                f"pace {100 * m['eval/episode_pace'] / n:4.0f}%  drop {m['eval/episode_dropped']:.2f}  len {n:.0f}")
         print(line, flush=True)
         log.write(line + "\n")
         log.flush()
@@ -66,13 +69,13 @@ if __name__ == "__main__":
             with open(os.path.join(out, name), "wb") as f:
                 pickle.dump(params, f)
 
-    env = lambda: BaodingNoisyEnv(a.period, a.w_turn, render=a.vision)
     # vision: smaller rollout batch (pixels dominate memory: 1024 envs x 20 steps x 2 x 24.6 KB)
     kw = (dict(num_envs=a.envs or 1024, batch_size=128, num_minibatches=8, unroll_length=20, num_eval_envs=128)
           if a.vision else dict(num_envs=a.envs or 2048, batch_size=256, num_minibatches=16, unroll_length=40,
                                 num_eval_envs=128))
+    env = lambda n: BaodingNoisyEnv(a.period, a.w_turn, render=a.vision, periods=a.periods, warp=a.warp, nworld=n)
     ppo.train(
-        environment=env(), eval_env=env(), num_timesteps=a.steps, num_evals=a.evals, episode_length=400,
+        environment=env(kw["num_envs"]), eval_env=env(kw["num_eval_envs"]), num_timesteps=a.steps, num_evals=a.evals, episode_length=400,
         num_updates_per_batch=4, discounting=0.99, learning_rate=3e-4, entropy_cost=1e-2, reward_scaling=0.1,
         normalize_observations=True, max_grad_norm=1.0, clipping_epsilon=0.2, network_factory=make_net(a.vision),
         progress_fn=progress, policy_params_fn=save, vision=a.vision, seed=0,

@@ -1,6 +1,7 @@
 """DAgger: distill the noisy privileged Baoding teacher into a top-down RGB student (2 frames + hand proprio).
 Labels are the teacher's deterministic actions on every visited state; aux loss on ball positions.
-Example: XLA_PYTHON_CLIENT_MEM_FRACTION=0.4 python -m robotics.policies.rl.baoding_dagger --teacher out/rl/baoding_noisy/teacher/best_params.pkl"""
+Example: XLA_PYTHON_CLIENT_MEM_FRACTION=0.4 python -m robotics.policies.rl.baoding_dagger --teacher out/rl/baoding_noisy/teacher/best_params.pkl
+v2 (speed command + MuJoCo Warp): --periods 2 16 --warp --teacher out/rl/baoding_cmd/teacher/best_params.pkl"""
 from platforms.paths import output_path
 import argparse
 import os
@@ -44,18 +45,22 @@ def load_student(path):
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--teacher", default=str(output_path("rl/baoding_noisy/teacher/best_params.pkl")))
+    p.add_argument("--teacher", required=True)
+    p.add_argument("--periods", type=float, nargs=2, help="v2 speed command: period range (s)")
+    p.add_argument("--warp", action="store_true", help="MJX-Warp physics + mesh rendering")
     p.add_argument("--iters", type=int, default=10)
     p.add_argument("--envs", type=int, default=192)
     p.add_argument("--grad_steps", type=int, default=3000, help="per iteration")
     p.add_argument("--batch", type=int, default=256)
     p.add_argument("--w_aux", type=float, default=0.1)
-    p.add_argument("--out", default=str(output_path("rl/baoding_noisy/dagger")))
+    p.add_argument("--out")
     a = p.parse_args()
+    a.out = a.out or str(output_path(f"rl/baoding_{'cmd' if a.periods else 'noisy'}/dagger"))
     os.makedirs(a.out, exist_ok=True)
     log = open(os.path.join(a.out, "log.txt"), "a")
 
-    env = BaodingNoisyEnv(render=True)
+    env = BaodingNoisyEnv(render=True, periods=a.periods, warp=a.warp, nworld=a.envs)
+    nv = env.observation_size["vis_state"]
     reset, step = jax.jit(jax.vmap(env.reset)), jax.jit(jax.vmap(env.step))
     teacher = load_policy(a.teacher, False, env)
     model = Student()
@@ -64,12 +69,12 @@ if __name__ == "__main__":
     M = a.iters * a.envs * T
     frames = np.empty((M, 64, 64, 3), np.uint8)
     prev = np.empty(M, np.int64)
-    prop = np.empty((M, 66), np.float32)
+    prop = np.empty((M, nv), np.float32)
     label = np.empty((M, 20), np.float32)
     ball = np.empty((M, 6), np.float32)
     n = 0
 
-    params = model.init(jax.random.PRNGKey(0), jnp.zeros((1, 64, 64, 6), jnp.uint8), jnp.zeros((1, 66)))
+    params = model.init(jax.random.PRNGKey(0), jnp.zeros((1, 64, 64, 6), jnp.uint8), jnp.zeros((1, nv)))
     opt = optax.adam(3e-4)
     opt_state = opt.init(params)
     norm = None
