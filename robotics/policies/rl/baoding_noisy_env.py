@@ -35,7 +35,7 @@ def build_model_cam(sim_dt):
 class BaodingNoisyEnv(Env):
     def __init__(self, period=16.0, w_turn=50.0, render=False, ctrl_dt=0.05, sim_dt=0.005, action_scale=0.15,
                  ball_noise=0.002, ball_bias=0.001, q_noise=0.005, qd_noise=0.1, act_noise=0.05, delay_prob=0.5,
-                 kick_prob=0.01, kick_std=0.1, periods=None, warp=False, nworld=None):
+                 kick_prob=0.01, kick_std=0.1, periods=None, warp=False, nworld=None, w_over=0.0):
         self.warp, self.cmd = warp, periods is not None
         self.mj_model, R, o = build_model_cam(sim_dt) if warp else E.build_model(sim_dt)
         self.R, self.o = jnp.array(R), jnp.array(o)
@@ -47,7 +47,7 @@ class BaodingNoisyEnv(Env):
         self.q_ball = jnp.array(self.mj_model.qpos0[20:])
         self.noise = dict(ball=ball_noise, bias=ball_bias, q=q_noise, qd=qd_noise, act=act_noise, delay=delay_prob,
                           kick_p=kick_prob, kick=kick_std)
-        self.render, self.nworld = render, nworld
+        self.render, self.nworld, self.w_over = render, nworld, w_over
         self.scene = BR.make_scene(self.mj_model, R, o) if render and not warp else None
         if render and warp:  # keep self.rc alive: its device buffers are freed with it
             self.rc = mjx.create_render_context(mjm=self.mj_model, nworld=nworld, cam_res=(BR.RES, BR.RES),
@@ -164,8 +164,9 @@ class BaodingNoisyEnv(Env):
         pair = E.pair_angle(b)
         dpair = (pair - info["pair"] + jnp.pi) % (2 * jnp.pi) - jnp.pi
         dropped = E.dropped_fn(b)
-        # tracking + rotation progress capped at the target pace (faster earns nothing) + alive
+        # tracking + rotation progress capped at the target pace (faster earns nothing; w_over > 0 penalizes it)
         reward = (jnp.exp(-err / 0.015).sum() + self.w_turn * jnp.clip(dpair, -0.3, cap)
+                  - self.w_over * self.w_turn * jnp.clip(dpair - cap, 0.0, 0.3)
                   - 0.001 * jnp.sum(action ** 2) - 50.0 * dropped)
 
         info = {**info, "rng": rng, "theta": theta, "pair": pair, "turn": info["turn"] + dpair, "prev_act": act}
