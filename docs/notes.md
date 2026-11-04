@@ -115,3 +115,39 @@ of a noisy privileged teacher, and direct vision PPO (asymmetric critic). Code: 
   (72 + 12) vs 2.5 h for vision PPO and matches the teacher exactly; vision PPO tracks ~1 mm worse.
   Caveats: images are flat-shaded collision primitives from a fixed camera, no image noise/augmentation,
   and the target phase is given to the policy; not a sim2real result.
+
+## Baoding v2: speed command + MuJoCo Warp (2026-11-03; sim only)
+Same noisy env, plus a per-episode speed command and real mesh rendering. Flags: `--periods 2 16 --warp`
+(`baoding_noisy_train`, `baoding_dagger`, `baoding_noisy_eval --cmd`); outputs in `out/rl/baoding_cmd/`.
+- Command: period T log-uniform in [2, 16] s/rev, ω = 2π/T, one direction; ω/π is the last entry of every obs
+  (state, vis_state, privileged_state); reward cap = ω·dt. No curriculum was needed: the teacher learned all of [2, 16].
+- MuJoCo Warp (MJX `impl="warp"`; needs `mujoco-warp==3.7.0` + `warp-lang==1.12.0`, 1.19 breaks the MJX import):
+  batched rendering, meshes and lights work in jit/vmap. At 1024 envs: physics 88k env-steps/s (vs 15k for MJX-JAX),
+  64 px render ~130 µs/img (mesh face count dominates). Chosen: 64 px, full hand meshes, no shadows, camera "top"
+  matching the old ray-caster view. All v2 policies train and evaluate on Warp physics (the v1 teacher transfers to it
+  unchanged). `naconmax` is a total over worlds (64 per world); contact buffers are shared across worlds, so episode
+  re-sampling only touches qpos/qvel/ctrl.
+- Vision PPO run 1 (no over-speed penalty) reward-hacked: it spun faster than commanded at every speed (pace 172–187%,
+  34 mm, stopped at 10M; `vision_rl_overspeed/`). Fix `--w_over 1`: subtract `w_turn·clip(Δpair − ω·dt, 0, 0.3)`.
+  The teacher and DAgger used w_over 0, so the vision PPO reward differs slightly.
+- Jobs were run one at a time: a second GPU job next to vision PPO (0.7 mem fraction) crashed it with
+  `CUDA_ERROR_ILLEGAL_ADDRESS`.
+- Results (`baoding_noisy_eval --cmd`, 128 eps × 20 s per cell, noisy env; pace = achieved / commanded pair rotation,
+  drops count as no progress; switch = command changed at 10 s, pace over 5–10 s / 10–13 s / 13–20 s):
+
+| policy | T=2 s | T=3 s | T=4 s | T=8 s | T=16 s | switch 8→3 s | switch 3→8 s |
+|---|---|---|---|---|---|---|---|
+| teacher, 83.1M steps (17 min) | 100%, 30.5 mm | 101%, 16.6 | 101%, 11.7 | 100%, 5.9 | 101%, 5.6 | 100 / 103 / 101% | 100 / 88 / 97% |
+| DAgger, 10 iters × 192 eps (9 min) | 99%, 30.5 mm | 101%, 16.9 | 101%, 11.9 | 100%, 5.9 | 100%, 6.0 | 99 / 102 / 100% | 100 / 88 / 98% |
+| DAgger, pixels frozen | 2% | 3% | 4% | 8% | 19% | — | — |
+| vision PPO, 60.6M steps, w_over 1 (4.4 h) | 72%, 34.0 mm | 86%, 32.6 | 90%, 30.4 | 98%, 9.3 | 98%, 7.0 | 99 / 76 / 86% | 88 / 127 / 93% |
+| vision PPO, pixels frozen | 1% | 1% | 1% | 3% | 6% | — | — |
+
+  Drops: teacher and DAgger 0.00 everywhere; vision PPO ≤ 0.02; frozen 0.07–0.31. Sweep videos (16→8→4→2 s/rev,
+  MuJoCo view | 64 px policy view): `teacher_sweep.mp4` (99% pace), `dagger_sweep.mp4` (98%), `vision_rl_sweep.mp4` (80%).
+  Vision PPO plateaued at 88–91% training-eval pace from ~25M steps; checkpoints all look alike, so the last one is used.
+- Verdict: teacher + DAgger (26 min total) follow the command over the whole range and match each other exactly;
+  vision PPO tracks slow commands (T ≥ 8 s) but lags at T ≤ 4 s and overshoots briefly after slowing down.
+  Both students collapse with frozen pixels, so they read the balls from the image.
+- Caveats: track error grows with speed for every policy (the balls lag the target phase; the reward checks speed,
+  not phase). Fixed camera, no image noise/augmentation, target phase given to the policy; not a sim2real result.

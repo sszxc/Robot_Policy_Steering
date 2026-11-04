@@ -48,6 +48,7 @@ Shared arguments: `--steps` env steps, `--envs` parallel envs, `--evals` evals d
 | `python -m robotics.policies.rl.rubik_train` | `--steps 60000000 --envs 4096 --evals 30 --out out/rl/rubik` | |
 | `python -m robotics.policies.rl.baoding_noisy_train` | `--steps 50000000 --envs 2048 --evals 25 --out out/rl/baoding_noisy/teacher` | Noisy env, pace-capped reward, critic sees privileged state. `--vision`: top-down 64 px RGB actor (defaults `--envs 1024` (512 fits a 16 GB laptop GPU), `--out out/rl/baoding_noisy/vision_rl`); `--period 16`, `--w_turn 50` |
 | `python -m robotics.policies.rl.baoding_dagger` | `--teacher out/rl/baoding_noisy/teacher/best_params.pkl --iters 10 --envs 192 --grad_steps 3000 --out out/rl/baoding_noisy/dagger` | Distills the teacher into an RGB student (`student.pkl`); `--w_aux 0.1` ball-position loss. Keeps all frames in RAM (~1 GB per iteration) |
+| v2: speed command + MuJoCo Warp | `baoding_noisy_train --periods 2 16 --warp` (teacher, 80M steps ≈ 17 min, `--out` default `out/rl/baoding_cmd/teacher`); add `--vision --envs 512 --w_over 1` for vision PPO (`XLA_PYTHON_CLIENT_MEM_FRACTION=0.7`; without `--w_over` it learned to over-spin); `baoding_dagger --periods 2 16 --warp --teacher out/rl/baoding_cmd/teacher/best_params.pkl` | `--periods LO HI`: per-episode period (s/rev), log-uniform, ω/π appended to every obs. `--warp`: MJX-Warp physics + mesh/light rendering (needs `mujoco-warp==3.7.0`, `warp-lang==1.12.0`). Don't start a second GPU job next to a near-full one: a failed Warp allocation shows up as `CUDA_ERROR_ILLEGAL_ADDRESS` |
 
 ### CPU eval (video)
 
@@ -75,7 +76,7 @@ MUJOCO_GL=egl python -m robotics.policies.rl.<name> [--params path.pkl] ...
 | `python -m robotics.policies.rl.pen_mjx_eval` | `--params out/rl/pen/best_params.pkl`, `--episodes 64` |
 | `python -m robotics.policies.rl.baoding_mjx_eval` | `--params out/rl/baoding/best_params.pkl`, `--period 16`, `--episodes 64` |
 | `python -m robotics.policies.rl.baoding_check` | `--params out/rl/baoding/best_params.pkl`, `--period 16`, `--episodes 64`: normal vs ball obs frozen at reset vs a mid-episode kick |
-| `MUJOCO_GL=egl python -m robotics.policies.rl.baoding_noisy_eval` | `--teacher` / `--vision_rl` / `--student` (any subset), `--episodes 64`, `--clean` (noise off), `--video` → `out/rl/baoding_noisy/<name>.mp4` (MuJoCo view + 64 px policy view). Vision policies also run with pixels frozen at reset |
+| `MUJOCO_GL=egl python -m robotics.policies.rl.baoding_noisy_eval` | `--teacher` / `--vision_rl` / `--student` (any subset), `--episodes 64`, `--clean` (noise off), `--video` → `out/rl/baoding_noisy/<name>.mp4` (MuJoCo view + 64 px policy view). Vision policies also run with pixels frozen at reset. `--cmd` (v2 checkpoints): speed grid `--grid 2 3 4 8 16` (s/rev), command switch 8↔3 s at 10 s, `--video` → `out/rl/baoding_cmd/<name>_sweep.mp4` (16→8→4→2 s/rev, 5 s each); `--episodes` must match the batch (Warp render context size) |
 
 ### Smoke
 
