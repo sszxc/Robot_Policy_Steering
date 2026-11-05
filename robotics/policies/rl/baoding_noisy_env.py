@@ -5,7 +5,9 @@ physics + mesh rendering (needs nworld = the vmapped batch size); cam='wrist' (w
 camera for an oblique wrist camera. tilt_max (rad) samples the palm tilt per episode (gravity direction in the hand
 frame, applied as per-body forces); g_obs appends that direction (3) before the command in all obs.
 dr=True: per-episode physics randomization (DR ranges below; model fields overridden inside the vmapped step),
-0/1/2-step action delay, and a 7-dim DR summary in privileged_state (before g / command)."""
+0/1/2-step action delay, and a 7-dim DR summary in privileged_state (before g / command).
+vis_dr=True (warp render): per-episode camera-mount jitter, ball/hand/floor colors, and image brightness / contrast /
+white balance / pixel noise."""
 import jax
 import jax.numpy as jnp
 import mujoco
@@ -36,6 +38,8 @@ def wrist_cam(alpha=WRIST_ALPHA, dist=WRIST_DIST):
 # physics DR (per episode): scale ranges unless noted; log-uniform for damping/armature
 DR = dict(ball_mass=(0.7, 1.3), hand_fric=(0.5, 1.2), ball_fric=(0.5, 1.5), kp=(0.7, 1.3), damp=(0.5, 2.0),
           arm=(0.5, 2.0), floss=(0.0, 0.01), link_mass=(0.8, 1.2), solref=(0.01, 0.03), delay_p=(0.4, 0.4, 0.2))
+VIS = dict(cam_pos=0.015, cam_rot=np.radians(5), ball_gain=(0.75, 1.15), hand_gray=(0.1, 0.6), floor=(0.3, 1.2),
+           bright=0.1, contrast=(0.8, 1.2), wb=(0.9, 1.1), noise=0.03)
 TH0 = -E.TILT[0]  # nominal palm tilt: 17 deg, fingers downhill
 
 
@@ -69,7 +73,8 @@ class BaodingNoisyEnv(Env):
     def __init__(self, period=16.0, w_turn=50.0, render=False, ctrl_dt=0.05, sim_dt=0.005, action_scale=0.15,
                  ball_noise=0.002, ball_bias=0.001, q_noise=0.005, qd_noise=0.1, act_noise=0.05, delay_prob=0.5,
                  kick_prob=0.01, kick_std=0.1, periods=None, warp=False, nworld=None, w_over=0.0, cam="top",
-                 tilt_max=None, g_obs=None, g_noise=0.03, dr=False):
+                 tilt_max=None, g_obs=None, g_noise=0.03, dr=False, vis_dr=False,
+                 tilt_about="up"):
         self.warp, self.cmd = warp, periods is not None
         self.mj_model, R, o = build_model_cam(sim_dt, cam) if warp else E.build_model(sim_dt)
         self.R, self.o = jnp.array(R), jnp.array(o)
@@ -82,11 +87,16 @@ class BaodingNoisyEnv(Env):
         self.noise = dict(ball=ball_noise, bias=ball_bias, q=q_noise, qd=qd_noise, act=act_noise, delay=delay_prob,
                           kick_p=kick_prob, kick=kick_std)
         self.render, self.nworld, self.w_over = render, nworld, w_over
-        self.tilt_max = tilt_max
+        self.tilt_max, self.tilt_about = tilt_max, tilt_about  # cap axis: "up" (palm up) or "nominal" (TH0)
         self.g_obs = (tilt_max is not None) if g_obs is None else g_obs
         self.noise["g"] = g_noise
         self.g_world = jnp.array(self.mj_model.opt.gravity)
-        self.dr = dr
+        self.dr, self.vis_dr = dr, vis_dr
+        if vis_dr:
+            m = self.mj_model
+            self.ball_vgeoms = np.array([g for g in range(m.ngeom) if m.body(m.geom_bodyid[g]).name.startswith("ball")])
+            self.hand_vgeoms = np.array([g for g in range(m.ngeom) if m.geom_group[g] == 2])
+            self.rgba0, self.mat_rgba0 = jnp.array(m.geom_rgba), jnp.array(m.mat_rgba)
         if dr:
             m = self.mj_model
             names = [m.body(m.geom_bodyid[g]).name for g in range(m.ngeom)]
@@ -120,12 +130,28 @@ class BaodingNoisyEnv(Env):
     def backend(self):
         return "mjx"
 
-    def _img(self, data):
+    def _img(self, data, info, rng):
         if not self.warp:
             return BR.render(data.geom_xpos, data.geom_xmat, self.scene)
-        d = mjx.refit_bvh(self.mjx_model, data, self.rcp)
-        rgb, _ = mjx.render(self.mjx_model, d, self.rcp)
-        return jnp.round(255 * mjx.get_rgb(self.rcp, 0, rgb)).astype(jnp.uint8)
+        m = self.mjx_model
+        if self.vis_dr:  # camera-mount jitter (pose read by the renderer from data) + per-episode colors
+            v = info["vis"]
+            rv = v["cam_rot"]
+            th = jnp.linalg.norm(rv) + 1e-9
+            K = jnp.cross(jnp.eye(3), rv / th)
+            Rj = jnp.eye(3) + jnp.sin(th) * K + (1 - jnp.cos(th)) * K @ K
+            data = data.replace(cam_xpos=data.cam_xpos + self.R @ v["cam_dp"], cam_xmat=data.cam_xmat @ Rj)
+            rgba = self.rgba0.at[self.ball_vgeoms, :3].multiply(v["ball_gain"])
+            rgba = rgba.at[self.hand_vgeoms, :3].set(jnp.clip(v["hand_rgb"], 0, 1))
+            m = m.tree_replace({"geom_rgba": jnp.clip(rgba, 0, 1),
+                                "mat_rgba": self.mat_rgba0.at[0, :3].multiply(v["floor"])})
+        d = mjx.refit_bvh(m, data, self.rcp)
+        rgb, _ = mjx.render(m, d, self.rcp)
+        x = mjx.get_rgb(self.rcp, 0, rgb)
+        if self.vis_dr:  # photometric: contrast about the image mean, brightness, white balance, pixel noise
+            x = (x - x.mean()) * v["contrast"] + x.mean() + v["bright"]
+            x = x * v["wb"] + v["noise"] * jax.random.normal(rng, x.shape)
+        return jnp.round(255 * jnp.clip(x, 0, 1)).astype(jnp.uint8)
 
     def _init(self, rng):
         """Random start: hand pose noise, balls on the orbit at a random phase; targets start aligned."""
@@ -146,6 +172,9 @@ class BaodingNoisyEnv(Env):
             th = jnp.arccos(jax.random.uniform(k1, (), minval=np.cos(self.tilt_max), maxval=1.0))
             ph = jax.random.uniform(k2, (), maxval=2 * jnp.pi)
         g = gravity_dir(th, ph)
+        if self.tilt_about == "nominal":  # rotate the cap axis from palm-up to the nominal 17 deg fingers-downhill
+            c, s_ = np.cos(TH0), np.sin(TH0)
+            g = jnp.array([[c, 0, s_], [0, 1, 0], [-s_, 0, c]]) @ g
         g_meas = g + self.noise["g"] * jax.random.normal(k3, (3,))  # per-episode FK / mount calibration error
         info = {"rng": r5, "g": g, "g_meas": g_meas / jnp.linalg.norm(g_meas), "theta": phi, "pair": E.pair_angle(b), "turn": jnp.zeros(()),
                 "omega": omega if self.cmd else jnp.asarray(self.omega, jnp.float32),
@@ -154,7 +183,21 @@ class BaodingNoisyEnv(Env):
                 "abuf": jnp.zeros((2, 20)), "hist": jnp.zeros((2, 2, 3)), "frame": jnp.zeros((BR.RES, BR.RES, 3), jnp.uint8)}
         if self.dr:
             info.update(self._sample_dr(r8))
+        if self.vis_dr:
+            info["vis"] = self._sample_vis(jax.random.fold_in(r8, 1))
         return qpos, info
+
+    def _sample_vis(self, rng):
+        k = jax.random.split(rng, 10)
+        u = lambda key, lo_hi, shape=(): jax.random.uniform(key, shape, minval=lo_hi[0], maxval=lo_hi[1])
+        ax = jax.random.normal(k[1], (3,))
+        return {"cam_dp": u(k[0], (-VIS["cam_pos"], VIS["cam_pos"]), (3,)),
+                "cam_rot": ax / jnp.linalg.norm(ax) * u(k[2], (0.0, VIS["cam_rot"])),
+                "ball_gain": u(k[3], VIS["ball_gain"], (2, 3)),
+                "hand_rgb": u(k[4], VIS["hand_gray"]) + u(k[5], (-0.05, 0.05), (3,)),
+                "floor": u(k[6], VIS["floor"], (3,)), "bright": u(k[7], (-VIS["bright"], VIS["bright"])),
+                "contrast": u(k[8], VIS["contrast"]), "wb": u(k[9], VIS["wb"], (3,)),
+                "noise": u(jax.random.fold_in(rng, 1), (0.0, VIS["noise"]))}
 
     def _sample_dr(self, rng):
         k = jax.random.split(rng, 10)
@@ -188,7 +231,7 @@ class BaodingNoisyEnv(Env):
 
     def _obs(self, data, info, rng, first):
         """Builds the obs dict and updates the ball history / previous frame in info."""
-        k1, k2, k3 = jax.random.split(rng, 3)
+        k1, k2, k3, k4 = jax.random.split(rng, 4)
         b = E.balls_hand(data.qpos, self.R, self.o)
         meas = b + info["bias"] + self.noise["ball"] * jax.random.normal(k1, (2, 3))
         hist = jnp.where(first, jnp.stack([meas, meas]), info["hist"])
@@ -214,7 +257,7 @@ class BaodingNoisyEnv(Env):
                "privileged_state": priv}
         info = {**info, "hist": jnp.stack([meas, hist[0]])}
         if self.render:
-            img = self._img(data)
+            img = self._img(data, info, k4)
             prev = jnp.where(first, img, info["frame"])
             obs["pixels/view_0"] = jnp.concatenate([img, prev], -1)
             info = {**info, "frame": img}

@@ -198,3 +198,46 @@ Env flags (`baoding_noisy_env.BaodingNoisyEnv`, also on train / dagger / eval): 
   Conclusion B0: the v2 gait only works with the fingers downhill (the balls rest against the fingers); even a flat
   palm drops 95% of episodes, and any thumb/wrist/pinky-downhill tilt drops almost always. Tilt robustness has to be
   trained, the current policy has none.
+- B1 teacher, cap ≤45° about palm-up, all azimuths (`--tilt 45`, w_over 0, 200M steps, 34 min,
+  `baoding_tilt/teacher_up45/`): training eval plateaued at ~50% drops from ~100M steps. Tilt grid at T=6 s:
+
+| tilt | fingers | thumb | wrist | pinky downhill |
+|---|---|---|---|---|
+| 0° | 54 (0.14) | | | |
+| 15° | 101 (0.00) | 173 (0.02) | 3 (1.00) | 4 (0.22) |
+| 30° | 101 (0.00) | 176 (0.00) | 3 (1.00) | −1 (0.78) |
+| 45° | 99 (0.00) | 150 (0.14) | 2 (1.00) | −2 (0.92) |
+
+  Fingers-downhill works at every tilt; thumb-downhill holds the balls but over-spins (no over-speed penalty);
+  pinky-downhill only holds at 15° and wrist-downhill always drops (the balls roll off the palm heel, where nothing
+  can stop them). So a palm-up-centered cap wastes samples on (probably) infeasible directions.
+- B2: cap ≤35° about the nominal 17° fingers-downhill tilt (`--tilt_about nominal`), `--w_over 1`, 300M steps.
+  Angle of the grid cells from nominal (in the cap if ≤35°): 0°→17; 15° fingers/thumb/wrist/pinky → 2/23/32/23;
+  30° → 13/34/47/34; 45° → 28/48/62/48.
+- B2 teacher (`--tilt 35 --tilt_about nominal --w_over 1`, 300M steps, 50 min, `baoding_tilt/teacher/`): training
+  eval 93% pace / 12–20% drops at the end (still creeping up). Tilt grid (64 eps; * = outside the 35° cap):
+
+| tilt | T=3 s fingers / thumb / wrist / pinky | T=8 s fingers / thumb / wrist / pinky |
+|---|---|---|
+| 0° | 82 (0.06) | 99 (0.00) |
+| 15° | 100 (0.00) / 77 (0.02) / 8 (0.89) / 75 (0.20) | 100 (0.00) / 97 (0.03) / 14 (0.88) / 77 (0.20) |
+| 30° | 100 (0.00) / 75 (0.02) / 1* (1.00) / 25 (0.72) | 100 (0.00) / 98 (0.02) / 3* (1.00) / 27 (0.67) |
+| 45° | 99 (0.00) / 54* (0.27) / 1* (1.00) / 7* (0.91) | 100 (0.00) / 77* (0.23) / 3* (1.00) / 5* (0.91) |
+- B2 DAgger wrist-cam student (`baoding_dagger --cam wrist --tilt 35 --tilt_about nominal`, 10 iters, 10 min,
+  `baoding_tilt/dagger/`). Tilt grid (64 eps):
+
+| tilt | T=3 s fingers / thumb / wrist / pinky | T=8 s fingers / thumb / wrist / pinky |
+|---|---|---|
+| 0° | 86 (0.03) | 99 (0.00) |
+| 15° | 100 (0.00) / 77 (0.02) / 9 (0.84) / 73 (0.22) | 100 (0.00) / 98 (0.02) / 18 (0.83) / 77 (0.19) |
+| 30° | 100 (0.00) / 73 (0.02) / 1* (1.00) / 26 (0.69) | 100 (0.00) / 95 (0.03) / 3* (1.00) / 25 (0.69) |
+| 45° | 100 (0.00) / 56* (0.23) / 1* (1.00) / 7* (0.89) | 100 (0.00) / 79* (0.19) / 3* (1.00) / 6* (0.89) |
+
+  Random training-like episodes (`eval --random`, 2 × 128 eps, speed T∈[2,16] s, tilt in the cap): teacher 88/78%
+  pace, 0.09/0.18 drops; student 88/76%, 0.08/0.20.
+- Conclusion B: tilt has to be an input and has to be trained (v2: no robustness at all). With the gravity direction
+  as input, one policy covers fingers-downhill (any tilt ≤45°), flat palm and thumb-downhill ≤30° at ~100% (slow) /
+  75–100% (T=3 s). Pinky-downhill is only partly solved (≈75% at 15°, ≈25% at 30°) and wrist-downhill is not solved
+  at all (the balls roll off the palm heel). These are likely limits of this hand (no wall at the wrist/pinky side),
+  not of the distillation: the wrist-camera student matches the teacher cell by cell. Practical rule for the real
+  arm: keep the palm within ~30° of "fingers 17° downhill" and avoid tilting toward the wrist or pinky.

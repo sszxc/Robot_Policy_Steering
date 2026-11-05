@@ -2,6 +2,7 @@
 (MuJoCo view | 64 px policy view). Pixels are frozen at reset for the 'frozen' ablation.
 --cmd (v2 speed-command policies, MuJoCo Warp): speed grid, mid-episode command switch, sweep video.
 --tilt_grid: pace / drop over palm tilt x azimuth at the --grid periods (env needs --tilt for the tilt physics).
+--random: episodes sampled like training (speed, tilt, DR, visuals); pace vs each episode's own command.
 Example: python -m robotics.policies.rl.baoding_noisy_eval --teacher ... --vision_rl ... --student ... --video"""
 from platforms.paths import output_path
 import argparse
@@ -55,6 +56,7 @@ def rollout(env, act, n, frozen=False, seed=0, schedule=None, tilt=None):
         s = set_tilt(env, s, tilt)
     pix0 = s.obs.get("pixels/view_0")
     alive, turn, err, qpos, views = np.ones(n, bool), np.zeros((T, n)), [], [], []
+    rollout.omega = np.asarray(s.info["omega"])
     for t in range(T):
         if schedule is not None:
             s = set_cmd(s, np.full(n, schedule[t]))
@@ -126,6 +128,16 @@ def eval_cmd(a, env, pols):
             print(f"  video {path} (sweep pace {100 * pace(turn, sch):.0f}%)", flush=True)
 
 
+def eval_random(a, env, pols):
+    """Training-like random episodes; pace = per-episode achieved / commanded rotation (drops count as no progress)."""
+    for name, act, vis in pols:
+        for seed in range(a.seeds):
+            turn, drop, err, _, _ = rollout(env, act, a.episodes, seed=100 + seed)
+            target = rollout.omega * env.ctrl_dt * T
+            print(f"{name:12s} seed {seed}  pace {100 * (turn.sum(0) / target).mean():4.0f}%  drop {drop.mean():.2f}  "
+                  f"track_err {err:5.1f} mm", flush=True)
+
+
 def eval_tilt(a, env, pols):
     """Pace (and drops) over palm tilt x azimuth at each --grid period; prints one table per policy and period."""
     ths, phs = [float(x) for x in a.tilts], [0.0, 90.0, 180.0, 270.0]
@@ -153,8 +165,12 @@ if __name__ == "__main__":
     p.add_argument("--cmd", action="store_true", help="v2 speed-command policies (MuJoCo Warp env)")
     p.add_argument("--grid", nargs="+", default=[2, 3, 4, 8, 16], help="--cmd: periods (s) to evaluate")
     p.add_argument("--tilt", type=float, help="env palm-tilt range (deg): enables the tilt physics")
+    p.add_argument("--tilt_about", default="up", choices=["up", "nominal"], help="--random: tilt cap axis")
     p.add_argument("--no_g_obs", action="store_true", help="policy without gravity obs (zero-shot tilt eval)")
     p.add_argument("--dr", action="store_true", help="physics domain randomization in the eval env")
+    p.add_argument("--vis_dr", action="store_true", help="visual randomization in the eval env")
+    p.add_argument("--random", action="store_true")
+    p.add_argument("--seeds", type=int, default=2, help="--random: batches of --episodes")
     p.add_argument("--tilt_grid", action="store_true")
     p.add_argument("--tilts", nargs="+", default=[0, 15, 30, 45], help="--tilt_grid: tilts (deg) from palm-up")
     p.add_argument("--cam", default="top", choices=["top", "wrist"], help="--cmd camera")
@@ -165,8 +181,10 @@ if __name__ == "__main__":
     v2 = dict(periods=(2.0, 16.0), warp=True, nworld=a.episodes, cam=a.cam) if a.cmd else {}
     if a.dr:
         v2["dr"] = True
+    if a.vis_dr:
+        v2["vis_dr"] = True
     if a.tilt is not None:
-        v2.update(tilt_max=np.radians(a.tilt), g_obs=not a.no_g_obs)
+        v2.update(tilt_max=np.radians(a.tilt), g_obs=not a.no_g_obs, tilt_about=a.tilt_about)
     env = BaodingNoisyEnv(render=True, **(off if a.clean else {}), **v2)
     pols = []
     if a.teacher:
@@ -175,7 +193,9 @@ if __name__ == "__main__":
         pols.append(("vision_rl", load_policy(a.vision_rl, True, env), True))
     if a.student:
         pols.append(("dagger", load_student(a.student), True))
-    if a.tilt_grid:
+    if a.random:
+        eval_random(a, env, pols)
+    elif a.tilt_grid:
         eval_tilt(a, env, pols)
     elif a.cmd:
         eval_cmd(a, env, pols)

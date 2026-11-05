@@ -50,7 +50,9 @@ if __name__ == "__main__":
     p.add_argument("--warp", action="store_true", help="MJX-Warp physics + mesh rendering")
     p.add_argument("--cam", default="top", choices=["top", "wrist"], help="--warp camera")
     p.add_argument("--tilt", type=float, help="max palm tilt (deg); teacher must be trained with the same flag")
+    p.add_argument("--tilt_about", default="up", choices=["up", "nominal"])
     p.add_argument("--dr", action="store_true", help="physics domain randomization")
+    p.add_argument("--vis_dr", action="store_true", help="camera-mount / color / photometric randomization")
     p.add_argument("--iters", type=int, default=10)
     p.add_argument("--envs", type=int, default=192)
     p.add_argument("--grad_steps", type=int, default=3000, help="per iteration")
@@ -63,7 +65,8 @@ if __name__ == "__main__":
     log = open(os.path.join(a.out, "log.txt"), "a")
 
     env = BaodingNoisyEnv(render=True, periods=a.periods, warp=a.warp, nworld=a.envs, cam=a.cam,
-                          tilt_max=None if a.tilt is None else np.radians(a.tilt), dr=a.dr)
+                          tilt_max=None if a.tilt is None else np.radians(a.tilt), dr=a.dr,
+                          tilt_about=a.tilt_about, vis_dr=a.vis_dr)
     nv = env.observation_size["vis_state"]
     reset, step = jax.jit(jax.vmap(env.reset)), jax.jit(jax.vmap(env.step))
     teacher = load_policy(a.teacher, False, env)
