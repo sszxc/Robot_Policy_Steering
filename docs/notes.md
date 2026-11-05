@@ -151,3 +151,50 @@ Same noisy env, plus a per-episode speed command and real mesh rendering. Flags:
   Both students collapse with frozen pixels, so they read the balls from the image.
 - Caveats: track error grows with speed for every policy (the balls lag the target phase; the reward checks speed,
   not phase). Fixed camera, no image noise/augmentation, target phase given to the policy; not a sim2real result.
+
+## Baoding v3: toward the real hand — wrist camera, palm tilt, physics DR (2026-11-04; sim only)
+Goal (user): make the vision policy transferable in principle: wrist camera close to the wrist base with an oblique
+view, a large palm-tilt range with the tilt as a policy input, physics DR. No real robot / SysID yet. Stages are added
+one at a time, each with its own conclusion. Route: noisy privileged teacher → DAgger RGB student (vision PPO skipped:
+4× the cost and worse in v2). All runs local (4090 laptop). Outputs `out/rl/baoding_{wrist,tilt,dr}/`.
+Env flags (`baoding_noisy_env.BaodingNoisyEnv`, also on train / dagger / eval): `--cam wrist`, `--tilt DEG`, `--dr`.
+
+### Stage A: oblique wrist camera
+- Camera (`cam="wrist"`): aimed at the orbit center from the wrist side, optical axis 55° off the palm normal, 15 cm
+  away (≈13 cm above the palm, 3.7 cm behind the hand-base origin), fovy 42° = square center crop of the D435 color
+  stream (the lab RealSense is a D435). Thumb lower right. During Baoding the curled fingers and the near ball
+  partly occlude the far ball (top camera: never).
+- Same v2 teacher (physics unchanged); DAgger 10 iters × 192 eps (10 min), `--periods 2 16 --warp --cam wrist`.
+- Results (`baoding_noisy_eval --cmd --cam wrist`, 128 eps × 20 s, noisy env):
+
+| policy | T=2 s | T=3 s | T=4 s | T=8 s | T=16 s | switch 8→3 s | switch 3→8 s |
+|---|---|---|---|---|---|---|---|
+| DAgger wrist cam | 100%, 29.7 mm | 101%, 17.1 | 101%, 11.8 | 100%, 5.8 | 100%, 5.8 | 100 / 103 / 100% | 100 / 88 / 97% |
+| DAgger wrist cam, pixels frozen | 2% | 3% | 4% | 7% | 14% | — | — |
+| (v2 DAgger top cam, for reference) | 99%, 30.5 | 101%, 16.9 | 101%, 11.9 | 100%, 5.9 | 100%, 6.0 | 99 / 102 / 100% | 100 / 88 / 98% |
+
+  No drops (frozen: 0.10–0.31).
+- Conclusion A: the oblique, partly occluded wrist view costs nothing: the student matches the teacher (and the
+  top-camera student) at every speed and still reads the balls from the image (frozen pixels → collapse).
+  Two stacked frames + the ball-position aux head are enough to handle the occlusion. Video `baoding_wrist/dagger_sweep.mp4`.
+
+### Stage B: palm tilt (gravity direction) as a policy input
+- Tilt = angle between "up" and the palm normal, azimuth = which side is downhill (0 fingers, 90 thumb, 180 wrist,
+  270 pinky); nominal v1/v2 tilt is 17° fingers-downhill. `--tilt DEG`: per episode, uniform over the spherical cap
+  ≤ DEG. Applied as a per-body force m·(g_new − g_nom) at each CoM (hand base welded, camera fixed to the hand);
+  identical to rotating `opt.gravity` (CPU check: max diff 0.0). Obs: unit gravity in the hand frame (3) before the
+  command in state / vis_state / privileged_state; actor copies carry a per-episode σ 0.03 error (≈2°, FK + mount).
+- B0, zero-shot v2 teacher (no gravity input; `eval --cmd --tilt_grid --tilt 45 --no_g_obs`, 64 eps, pace% (drop)):
+
+| tilt | T=4 s fingers / thumb / wrist / pinky downhill | T=8 s fingers / thumb / wrist / pinky |
+|---|---|---|
+| 0° (flat) | 4 (0.95) | 12 (0.94) |
+| 10° | 101 (0.00) / 7 (0.83) / 2 (1.00) / −1 (1.00) | 99 (0.00) / 13 (0.77) / 4 (1.00) / −2 (1.00) |
+| 17° | 101 (0.00) / 6 (0.77) / 2 (1.00) / −1 (1.00) | 100 (0.00) / 16 (0.72) / 4 (1.00) / −3 (1.00) |
+| 25° | 100 (0.00) / 5 (0.72) / 2 (1.00) / −2 (1.00) | 100 (0.00) / 15 (0.66) / 4 (1.00) / −3 (1.00) |
+| 35° | 88 (0.02) / 4 (0.73) / 2 (1.00) / −2 (1.00) | 100 (0.00) / 10 (0.80) / 3 (1.00) / −3 (1.00) |
+| 45° | 72 (0.03) / 3 (0.92) / 2 (1.00) / −2 (1.00) | 100 (0.00) / 8 (0.86) / 3 (1.00) / −3 (1.00) |
+
+  Conclusion B0: the v2 gait only works with the fingers downhill (the balls rest against the fingers); even a flat
+  palm drops 95% of episodes, and any thumb/wrist/pinky-downhill tilt drops almost always. Tilt robustness has to be
+  trained, the current policy has none.

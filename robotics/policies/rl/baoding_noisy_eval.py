@@ -1,6 +1,7 @@
 """Batched MJX eval of noisy-Baoding policies (teacher / vision PPO / DAgger student) + optional video of episode 0
 (MuJoCo view | 64 px policy view). Pixels are frozen at reset for the 'frozen' ablation.
 --cmd (v2 speed-command policies, MuJoCo Warp): speed grid, mid-episode command switch, sweep video.
+--tilt_grid: pace / drop over palm tilt x azimuth at the --grid periods (env needs --tilt for the tilt physics).
 Example: python -m robotics.policies.rl.baoding_noisy_eval --teacher ... --vision_rl ... --student ... --video"""
 from platforms.paths import output_path
 import argparse
@@ -14,7 +15,7 @@ from PIL import Image, ImageDraw
 
 from robotics.policies.rl import baoding_env as E
 from robotics.policies.rl.baoding_dagger import load_student
-from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv
+from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv, gravity_dir
 from robotics.policies.rl.baoding_noisy_train import load_policy
 
 T = 400
@@ -27,10 +28,31 @@ def set_cmd(s, period):
     return s.replace(obs=obs, info={**s.info, "omega": w})
 
 
-def rollout(env, act, n, frozen=False, seed=0, schedule=None):
-    """schedule: per-step command period (T,) for --cmd envs, else the env's fixed period."""
-    reset, step = jax.jit(jax.vmap(env.reset)), jax.jit(jax.vmap(env.step))
+def set_tilt(env, s, g):
+    """Overrides the palm tilt (gravity dir in the hand frame, (3,)) in info and obs; keeps each episode's g bias."""
+    g = jnp.broadcast_to(jnp.asarray(g, jnp.float32), s.info["g"].shape)
+    gm = g + s.info["g_meas"] - s.info["g"]
+    gm = gm / jnp.linalg.norm(gm, axis=-1, keepdims=True)
+    obs = dict(s.obs)
+    if env.g_obs:  # g sits right before the command entry
+        c = int(env.cmd)
+        for k, v in (("state", gm), ("vis_state", gm), ("privileged_state", g)):
+            i = obs[k].shape[1] - 3 - c
+            obs[k] = obs[k].at[:, i:i + 3].set(v)
+    return s.replace(obs=obs, info={**s.info, "g": g, "g_meas": gm})
+
+
+_JIT = {}
+
+
+def rollout(env, act, n, frozen=False, seed=0, schedule=None, tilt=None):
+    """schedule: per-step command period (T,) for --cmd envs, else the env's fixed period; tilt: gravity dir (3,)."""
+    if id(env) not in _JIT:
+        _JIT[id(env)] = jax.jit(jax.vmap(env.reset)), jax.jit(jax.vmap(env.step))
+    reset, step = _JIT[id(env)]
     s = reset(jax.random.split(jax.random.PRNGKey(seed), n))
+    if tilt is not None:
+        s = set_tilt(env, s, tilt)
     pix0 = s.obs.get("pixels/view_0")
     alive, turn, err, qpos, views = np.ones(n, bool), np.zeros((T, n)), [], [], []
     for t in range(T):
@@ -99,9 +121,25 @@ def eval_cmd(a, env, pols):
         if a.video:  # command sweep 16 -> 8 -> 4 -> 2 s per revolution, 5 s each
             sch = np.repeat([16.0, 8.0, 4.0, 2.0], T // 4)
             turn, drop, err, qpos, views = rollout(env, act, a.episodes, schedule=sch)
-            path = str(output_path(f"rl/baoding_cmd/{name}_sweep.mp4"))
+            path = f"{a.out}/{name}_sweep.mp4"
             video(env, qpos, views, path, labels=[f"command: {p:.0f} s / rev" for p in sch])
             print(f"  video {path} (sweep pace {100 * pace(turn, sch):.0f}%)", flush=True)
+
+
+def eval_tilt(a, env, pols):
+    """Pace (and drops) over palm tilt x azimuth at each --grid period; prints one table per policy and period."""
+    ths, phs = [float(x) for x in a.tilts], [0.0, 90.0, 180.0, 270.0]
+    for name, act, vis in pols:
+        for P in [float(x) for x in a.grid]:
+            sch = np.full(T, P)
+            print(f"{name}  T={P:.0f}s  pace% (drop)  rows: tilt deg, cols: downhill fingers/thumb/wrist/pinky", flush=True)
+            for th in ths:
+                cells = []
+                for ph in (phs if th > 0 else [0.0]):
+                    g = gravity_dir(jnp.radians(th), jnp.radians(ph))
+                    turn, drop, err, _, _ = rollout(env, act, a.episodes, schedule=sch, tilt=g)
+                    cells.append(f"{100 * pace(turn, sch):4.0f} ({drop.mean():.2f})")
+                print(f"  {th:4.0f}  " + "  ".join(cells), flush=True)
 
 
 if __name__ == "__main__":
@@ -114,9 +152,21 @@ if __name__ == "__main__":
     p.add_argument("--video", action="store_true", help="write out/rl/baoding_{noisy,cmd}/<name>*.mp4 (episode 0)")
     p.add_argument("--cmd", action="store_true", help="v2 speed-command policies (MuJoCo Warp env)")
     p.add_argument("--grid", nargs="+", default=[2, 3, 4, 8, 16], help="--cmd: periods (s) to evaluate")
+    p.add_argument("--tilt", type=float, help="env palm-tilt range (deg): enables the tilt physics")
+    p.add_argument("--no_g_obs", action="store_true", help="policy without gravity obs (zero-shot tilt eval)")
+    p.add_argument("--dr", action="store_true", help="physics domain randomization in the eval env")
+    p.add_argument("--tilt_grid", action="store_true")
+    p.add_argument("--tilts", nargs="+", default=[0, 15, 30, 45], help="--tilt_grid: tilts (deg) from palm-up")
+    p.add_argument("--cam", default="top", choices=["top", "wrist"], help="--cmd camera")
+    p.add_argument("--out", help="--cmd video dir (default out/rl/baoding_cmd)")
     a = p.parse_args()
     off = dict(ball_noise=0, ball_bias=0, q_noise=0, qd_noise=0, act_noise=0, delay_prob=0, kick_prob=0)
-    v2 = dict(periods=(2.0, 16.0), warp=True, nworld=a.episodes) if a.cmd else {}
+    a.out = a.out or str(output_path("rl/baoding_cmd"))
+    v2 = dict(periods=(2.0, 16.0), warp=True, nworld=a.episodes, cam=a.cam) if a.cmd else {}
+    if a.dr:
+        v2["dr"] = True
+    if a.tilt is not None:
+        v2.update(tilt_max=np.radians(a.tilt), g_obs=not a.no_g_obs)
     env = BaodingNoisyEnv(render=True, **(off if a.clean else {}), **v2)
     pols = []
     if a.teacher:
@@ -125,7 +175,9 @@ if __name__ == "__main__":
         pols.append(("vision_rl", load_policy(a.vision_rl, True, env), True))
     if a.student:
         pols.append(("dagger", load_student(a.student), True))
-    if a.cmd:
+    if a.tilt_grid:
+        eval_tilt(a, env, pols)
+    elif a.cmd:
         eval_cmd(a, env, pols)
     for name, act, vis in ([] if a.cmd else pols):
         target = T * env.omega * env.ctrl_dt

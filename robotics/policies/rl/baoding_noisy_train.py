@@ -10,6 +10,7 @@ import time
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 from brax.training.acme import running_statistics
 from brax.training.agents.ppo import networks as ppo_networks, networks_vision, train as ppo
 
@@ -45,6 +46,9 @@ if __name__ == "__main__":
     p.add_argument("--w_turn", type=float, default=50.0)
     p.add_argument("--periods", type=float, nargs=2, help="v2 speed command: period range (s), log-uniform")
     p.add_argument("--warp", action="store_true", help="MJX-Warp physics + mesh rendering")
+    p.add_argument("--cam", default="top", choices=["top", "wrist"], help="--warp camera (vision)")
+    p.add_argument("--tilt", type=float, help="max palm tilt (deg) from palm-up, any direction; adds gravity obs")
+    p.add_argument("--dr", action="store_true", help="physics domain randomization (+0..2 step action delay)")
     p.add_argument("--w_over", type=float, default=0.0, help="penalty weight (x w_turn) on rotation beyond the pace")
     p.add_argument("--envs", type=int, help="default 2048 (state) / 1024 (vision)")
     p.add_argument("--evals", type=int, default=25)
@@ -74,8 +78,9 @@ if __name__ == "__main__":
     kw = (dict(num_envs=a.envs or 1024, batch_size=128, num_minibatches=8, unroll_length=20, num_eval_envs=128)
           if a.vision else dict(num_envs=a.envs or 2048, batch_size=256, num_minibatches=16, unroll_length=40,
                                 num_eval_envs=128))
+    tilt = None if a.tilt is None else np.radians(a.tilt)
     env = lambda n: BaodingNoisyEnv(a.period, a.w_turn, render=a.vision, periods=a.periods, warp=a.warp, nworld=n,
-                                  w_over=a.w_over)
+                                    w_over=a.w_over, cam=a.cam, tilt_max=tilt, dr=a.dr)
     ppo.train(
         environment=env(kw["num_envs"]), eval_env=env(kw["num_eval_envs"]), num_timesteps=a.steps, num_evals=a.evals, episode_length=400,
         num_updates_per_batch=4, discounting=0.99, learning_rate=3e-4, entropy_cost=1e-2, reward_scaling=0.1,
