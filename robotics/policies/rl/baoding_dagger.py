@@ -118,7 +118,7 @@ if __name__ == "__main__":
             last[k] = idx
             n += len(k)
             s = step(s, act)
-            turn += np.asarray(s.metrics["turn"]) * alive
+            turn += np.where(alive, np.nan_to_num(np.asarray(s.metrics["turn"])), 0.0)  # ended episodes may go NaN
             err.append(np.where(alive, np.asarray(s.metrics["track_err"]), np.nan))
             alive &= np.asarray(s.done) == 0
         roll = (f"iter {it} ({'teacher' if beta else 'student'} rollouts): pair turn {turn.mean():.2f} rad/ep, "

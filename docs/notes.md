@@ -241,3 +241,61 @@ Env flags (`baoding_noisy_env.BaodingNoisyEnv`, also on train / dagger / eval): 
   at all (the balls roll off the palm heel). These are likely limits of this hand (no wall at the wrist/pinky side),
   not of the distillation: the wrist-camera student matches the teacher cell by cell. Practical rule for the real
   arm: keep the palm within ~30° of "fingers 17° downhill" and avoid tilting toward the wrist or pinky.
+
+### Stage C: physics DR (+ tilt)
+- `--dr` (per episode): ball mass ×[0.7,1.3] (each ball), hand friction ×[0.5,1.2] (hand–ball contacts use the hand's
+  1.0), ball friction ×[0.5,1.5] (ball–ball), per-joint kp ×[0.7,1.3] (kv ×√, damping ratio kept), per-dof damping
+  and armature ×[0.5,2] log-uniform, frictionloss [0,0.01] Nm, finger-link masses ×[0.8,1.2], ball contact solref
+  timeconst [0.01,0.03] s, action delay 0/1/2 steps (p 0.4/0.4/0.2). Implemented by overriding model fields per
+  episode inside the vmapped step (MJX-Warp batches them); tilt forces use the randomized masses. Critic gets a
+  7-dim DR summary. NaN states only appear after an episode has already ended (drop), never inside one.
+- Teacher (`--tilt 35 --tilt_about nominal --w_over 1 --dr`, 400M steps, 75 min, `baoding_dr/teacher/`): training
+  eval plateaued at ~80% pace / 20–26% drops from ~200M. DAgger wrist-cam student 10 iters (10 min).
+- Tilt grid under DR (64 eps), teacher | student:
+
+| tilt | T=8 s teacher: fingers / thumb / wrist / pinky | T=8 s student | T=3 s teacher | T=3 s student |
+|---|---|---|---|---|
+| 0° | 62 (0.00) | 60 (0.03) | 42 (0.03) | 37 (0.05) |
+| 15° | 100 / 99 / 4 (0.95) / 2 (0.45) | 100 / 97 / 4 (0.98) / 2 (0.52) | 99 / 66 / 1 / 1 (0.47) | 98 / 65 / 1 / 1 (0.52) |
+| 30° | 100 / 100 / 4* / −2 (0.86) | 100 / 94 / 4* / −2 (0.83) | 99 / 63 / 1* / −1 (0.83) | 100 / 61 / 1* / −1 (0.89) |
+| 45° | 100 / 77* (0.23) / 3* / −4* | 100 / 65* (0.36) / 3* / −3* | 99 / 45* / 1* / −1* | 99 / 44* / 1* / −1* |
+
+- Conclusion C: the DR teacher keeps fingers- and thumb-downhill but gives up the pinky side (B: ~75% at 15°, now
+  ~2%) and the flat palm drops to ~60% (B: 99%). The student still copies the teacher exactly. In the cross matrix
+  below the B student (never saw DR) is *better* under DR physics than the C policies (76% vs 68%), so these DR
+  ranges cost little at test time but made the teacher's training harder / narrower at 400M steps. Not yet a
+  positive result for DR; next: warm-start the DR teacher from B2 (actor dims match; pad the critic input) or a DR
+  curriculum, and narrow the friction range once the real balls/finger pads are known.
+
+### Stage D: visual DR
+- `--vis_dr` (DAgger only; the teacher ignores pixels): camera-mount jitter ±1.5 cm per axis + ≤5° rotation (applied
+  to the camera pose the renderer reads from data), ball color gain ×[0.75,1.15] per channel, hand gray [0.1,0.6]
+  ± tint, floor texture tint ×[0.3,1.2], then contrast ×[0.8,1.2], brightness ±0.1, white balance ×[0.9,1.1], pixel
+  noise σ∈[0,0.03]. Example views: `baoding_vis/vis_grid.png`. Student = C teacher, `--dr --vis_dr`, 10 iters (10 min);
+  its imitation loss stays higher (action MSE 0.0067 vs 0.0045 for C).
+
+### Cross matrix (all wrist-cam students; `eval --random`, 2 × 128 training-like episodes per cell, speed T∈[2,16] s)
+Rows = policy (stage it was trained for), columns = test conditions; pace% / drop rate, mean of the two batches.
+"nominal" = fixed 17° fingers-downhill, nominal physics, clean images; "tilt" = 35° cap about nominal.
+
+| policy | nominal | tilt | tilt + DR | tilt + DR + visual DR |
+|---|---|---|---|---|
+| A student (wrist cam, no tilt input) | 101 / 0.00 | 20 / 0.63 | 18 / 0.67 | 5 / 0.63 |
+| B student (+ tilt input) | 99 / 0.00 | 82 / 0.14 | 76 / 0.20 | 9 / 0.55 |
+| C student (+ physics DR) | 99 / 0.00 | 72 / 0.16 | 68 / 0.19 | 7 / 0.56 |
+| D student (+ visual DR) | 98 / 0.00 | 68 / 0.18 | 62 / 0.21 | 59 / 0.25 |
+| C teacher (state, for reference) | 99 / 0.00 | 72 / 0.16 | 68 / 0.19 | 68 / 0.18 |
+
+No episode ended in a NaN state. Track error grows 7–10 mm (nominal) → 12–17 mm (tilt/DR).
+
+### Overall conclusions (v3)
+1. Wrist camera (oblique, occluded): free. The student matches the teacher at all speeds.
+2. Palm tilt: the single biggest gap. Without the tilt input/training, performance outside "fingers downhill"
+   collapses (A: 20% pace, 63% drops in the cap). With it, one policy covers fingers/thumb-downhill and the flat
+   palm; wrist- and pinky-downhill are probably beyond this hand. Keep the real palm in that region.
+3. Physics DR (these ranges) costs a trained-without-DR policy only ~6 points at test time, while DR training at
+   400M steps gave a narrower teacher; DR needs a better training recipe before it pays off.
+4. Visual DR is mandatory for any image change: B/C students collapse (5–9% pace) under camera/color/photometric
+   randomization, the D student keeps 59% (87% of its teacher's 68%) and loses only ~4 points on clean images.
+5. DAgger stays lossless whenever the images are clean (student = teacher in every stage); the remaining
+   student–teacher gap (68 → 59) comes from the visual randomization.

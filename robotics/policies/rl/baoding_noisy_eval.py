@@ -57,6 +57,7 @@ def rollout(env, act, n, frozen=False, seed=0, schedule=None, tilt=None):
     pix0 = s.obs.get("pixels/view_0")
     alive, turn, err, qpos, views = np.ones(n, bool), np.zeros((T, n)), [], [], []
     rollout.omega = np.asarray(s.info["omega"])
+    nanterm = np.zeros(n, bool)
     for t in range(T):
         if schedule is not None:
             s = set_cmd(s, np.full(n, schedule[t]))
@@ -64,10 +65,12 @@ def rollout(env, act, n, frozen=False, seed=0, schedule=None, tilt=None):
         if pix0 is not None:
             views.append(np.asarray(s.obs["pixels/view_0"][0, ..., :3]))
         s = step(s, act(obs))
-        turn[t] = np.asarray(s.metrics["turn"]) * alive
+        turn[t] = np.where(alive, np.nan_to_num(np.asarray(s.metrics["turn"])), 0.0)  # ended episodes may go NaN
+        nanterm |= alive & (np.asarray(s.done) > 0) & (np.asarray(s.metrics["dropped"]) == 0)
         err.append(np.where(alive, np.asarray(s.metrics["track_err"]), np.nan))
         qpos.append(np.asarray(s.pipeline_state.qpos[0]))
         alive &= np.asarray(s.done) == 0
+    rollout.nanterm = nanterm.mean()  # episodes ended by a NaN state rather than a drop
     return turn, 1 - alive, 1000 * np.nanmean(err), qpos, views
 
 
@@ -135,7 +138,7 @@ def eval_random(a, env, pols):
             turn, drop, err, _, _ = rollout(env, act, a.episodes, seed=100 + seed)
             target = rollout.omega * env.ctrl_dt * T
             print(f"{name:12s} seed {seed}  pace {100 * (turn.sum(0) / target).mean():4.0f}%  drop {drop.mean():.2f}  "
-                  f"track_err {err:5.1f} mm", flush=True)
+                  f"track_err {err:5.1f} mm  nan-ended {rollout.nanterm:.3f}", flush=True)
 
 
 def eval_tilt(a, env, pols):
@@ -150,7 +153,8 @@ def eval_tilt(a, env, pols):
                 for ph in (phs if th > 0 else [0.0]):
                     g = gravity_dir(jnp.radians(th), jnp.radians(ph))
                     turn, drop, err, _, _ = rollout(env, act, a.episodes, schedule=sch, tilt=g)
-                    cells.append(f"{100 * pace(turn, sch):4.0f} ({drop.mean():.2f})")
+                    nt = f" nan {rollout.nanterm:.2f}" if rollout.nanterm > 0 else ""
+                    cells.append(f"{100 * pace(turn, sch):4.0f} ({drop.mean():.2f}{nt})")
                 print(f"  {th:4.0f}  " + "  ".join(cells), flush=True)
 
 
