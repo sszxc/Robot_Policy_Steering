@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--w-seed", type=int, default=0)
     parser.add_argument("--n-z", type=int, default=8)
     parser.add_argument("--z-seed", type=int, default=0)
+    parser.add_argument("--axes", action="store_true", help="u_k = √dim·e_k (first n-z axes) instead of random")
     parser.add_argument("--scales", default="0.03,0.1,0.3,1,3")
     parser.add_argument("--fd", type=float, default=0.3, help="central-difference step on each z_i")
     parser.add_argument("--noise-reps", type=int, default=8)
@@ -38,7 +39,8 @@ def main():
     bank = torch.load(args.inputs)
     N = min(args.max_inputs, len(bank["task"]))
     idx = np.random.default_rng(0).choice(len(bank["task"]), N, replace=False)
-    U = torch.tensor(directions(args.n_z, dim, args.z_seed), dtype=torch.float32)
+    U = torch.eye(dim)[:args.n_z] * dim**0.5 if args.axes else torch.tensor(directions(args.n_z, dim, args.z_seed))
+    U = U.float()
     scales = [float(c) for c in args.scales.split(",")]
     A = 7  # real action dims (the rest is padding to max_action_dim)
     B = args.batch_size

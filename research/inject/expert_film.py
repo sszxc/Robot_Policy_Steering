@@ -7,13 +7,18 @@ import torch
 
 
 def attach(policy, layers, dim, alpha, w="random", seed=0):
-    """w: "random" (fixed Gaussian / √dim, γ and β) or a fit_pca.py file (β = Σ z_i √λ_i u_i, γ = 0)."""
+    """w: "random" (coupled: Gaussian / √dim, every z_i drives γ and β), "split" (z[:dim/2] -> γ, z[dim/2:] -> β,
+    each block / √its width, so per-entry scale matches "random") or a fit_pca.py file (β = Σ z_i √λ_i u_i, γ = 0)."""
     expert = policy.model.vlm_with_expert.lm_expert
     H = expert.config.hidden_size
     device = next(expert.parameters()).device
+    g = torch.Generator().manual_seed(seed)
     if w == "random":
-        g = torch.Generator().manual_seed(seed)
         W = {l: torch.randn(2 * H, dim, generator=g) / dim**0.5 for l in layers}
+    elif w == "split":
+        k = dim // 2
+        W = {l: torch.block_diag(torch.randn(H, k, generator=g) / k**0.5,
+                                 torch.randn(H, dim - k, generator=g) / (dim - k)**0.5) for l in layers}
     else:
         pca = torch.load(w)["layers"]
         W = {l: torch.cat([torch.zeros(H, dim), pca[l]["eigvecs"][:, :dim] * pca[l]["eigvals"][:dim].sqrt()])
