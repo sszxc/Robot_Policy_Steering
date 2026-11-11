@@ -23,6 +23,7 @@ def parse_args():
     parser.add_argument("--alpha", type=float, default=0.1)
     parser.add_argument("--w", default="random", help='"random" or a fit_pca.py pca.pt path')
     parser.add_argument("--w-seed", type=int, default=0)
+    parser.add_argument("--center", default=None, help='expert_film γ on normalized x: "token" or a pool_stats.py file')
     parser.add_argument("--n-z", type=int, default=4, help="orthonormal random directions u_k (≤ dim), ‖u_k‖ = √dim")
     parser.add_argument("--scales", default="1", help="comma list; z = scale * u for each u")
     parser.add_argument("--zero-reps", type=int, default=1, help="z=0 episodes per init (noise reps); 0 skips z=0")
@@ -102,7 +103,8 @@ def main():
     out = rollout.new_run_dir(args, f"steer-{args.suite}-t{args.task_id}")
     policy, env, procs = rollout.load(args)
     attach = lambda: INJECT[args.inject](policy, layers=[int(l) for l in args.layers.split(",")],
-                                         dim=args.dim, alpha=args.alpha, w=args.w, seed=args.w_seed)
+                                         dim=args.dim, alpha=args.alpha, w=args.w, seed=args.w_seed,
+                                         center=args.center)
     if args.check:
         check(args, policy, env, procs, attach)
         return env.close()

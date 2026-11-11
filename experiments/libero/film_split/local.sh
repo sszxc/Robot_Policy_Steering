@@ -2,6 +2,8 @@
 # Laptop queue (run detached: setsid nohup ... &): coupled (w=random) vs split FiLM-z8 at parameter-space parity (α=0.3, B=12 as ticket); re-run to continue.
 # Stage 1: axis grid z = c·√8·e_k on t0/t7 for both W, z = 0 × 8 noise reps, then held-out (inits 10-39 × 2) of the best axis z per W
 # (split: best γ axis and best β axis). Stage 2: ticket CEM arm film8split, 5 tasks × 2 chains (z = 0 held-out from film8).
+# Stage 3: split with γ on normalized x (in = per-token InstanceNorm, bn = BN stats pooled over the other 9 tasks):
+# γ-axis grid (β axes equal split's) and held-out of the best γ axis.
 cd "$(dirname "$0")/../../.."
 export LIBERO_CONFIG_PATH=$PWD/out/config/libero MUJOCO_GL=egl HF_HUB_OFFLINE=1
 P=/home/lab/miniforge3/envs/vla-libero/bin/python
@@ -25,7 +27,23 @@ for t in 0 7; do
   done
 done
 for t in 0 7 9 4 2; do
+  [ -f $T/t$t/film8split/heldout.jsonl ] && continue
   $P -m research.ticket --task-id $t --inject expert_film --dim 8 --w split --repeats 2 --batch-size 12 \
     --output-dir $T/t$t/film8split >> $T/logs/t$t-film8split.log 2>&1
 done
-echo "film_split done" >> $G/logs/queue.log
+[ -f $G/axes-gamma.npy ] || $P -c "import numpy as np; np.save('$G/axes-gamma.npy', np.eye(8)[:4] * 8**0.5)"
+for t in 0 7; do
+  [ -f $G/stats-loo-t$t.pt ] || $P experiments/libero/film_split/pool_stats.py $G/stats-loo-t$t.pt $t
+  for c in in bn; do
+    C=token; [ $c = bn ] && C=$G/stats-loo-t$t.pt
+    steer grid-t$t-split-$c $t --w split --center $C --z-file $G/axes-gamma.npy --scales=-2,-1,-0.5,0.5,1,2 --inits 8
+  done
+done
+for t in 0 7; do
+  for c in in bn; do
+    C=token; [ $c = bn ] && C=$G/stats-loo-t$t.pt; b=$G/best-t$t-split-$c-gamma.npy
+    [ -f $b ] || $P experiments/libero/film_split/pick.py $G/grid-t$t-split-$c $b gamma >> $G/logs/pick.log
+    steer held-t$t-split-$c-gamma $t --w split --center $C --z-file $b --scales 1 --zero-reps 0 --z-reps 2 --init-start 10 --inits 30 --videos 0
+  done
+done
+echo "film_split done $(date)" >> $G/logs/queue.log
