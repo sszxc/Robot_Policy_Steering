@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FiLM Coupled vs Split</title>
+<script src="plotly.min.js"></script>
+<style>
+:root { --bg:#fcfcfb; --fg:#1b1b1a; --muted:#5f5e5a; --line:#e4e3df; --code:#f1f0ec; --acc:#2a78d6; --card:#ffffff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; } }
+:root[data-theme="dark"] { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; }
+body { background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+h1 { font-size:1.6em; margin-bottom:.3em; } h2 { font-size:1.2em; margin-top:2em; border-bottom:1px solid var(--line); padding-bottom:.2em; }
+a { color:var(--acc); } code { background:var(--code); padding:1px 4px; border-radius:3px; font-size:.9em; }
+table { border-collapse:collapse; margin:.8em 0; font-size:.85em; display:block; overflow-x:auto; }
+th, td { border:1px solid var(--line); padding:3px 7px; text-align:left; white-space:nowrap; }
+th { background:var(--code); }
+figure { margin:1.4em 0; } figure > div { background:#fff; border-radius:4px; overflow-x:auto; }
+figcaption { color:var(--muted); font-size:.87em; margin-top:.4em; }
+pre.vlm { background:var(--code); padding:.6em .9em; border-radius:4px; white-space:pre-wrap; font-size:.85em; }
+.key { border-left:3px solid var(--acc); padding:.2em .9em; margin:1em 0; }
+</style></head><body>
+<h1>FiLM-z8 on SmolVLA: coupled vs split γ/β projection (LIBERO-Object)</h1>
+<p>Follow-up to the <a href="smolvla_ticket_object.html">per-task search (ticket)</a> and
+<a href="smolvla_steer2_object.html">steering round 2</a>. The FiLM projection used so far maps every z coordinate to both
+the scale γ and the shift β. Here a second projection keeps them apart, and the two are compared side by side at equal
+parameter-space energy. Both projections are kept; neither is the default.</p>
+
+<h2>Setup</h2>
+<ul>
+<li>FiLM on the action-expert MLP outputs x of layers 7, 15, 23, 31: x' = (1 + γ) ⊙ x + β, same γ, β for all action tokens and
+  denoising steps. α = 0.3, d = 8, W seed 0 for both projections.</li>
+<li><b>coupled</b> (<code>--w random</code>, as in all earlier rounds): [γ; β] = α·W·z, W ∈ ℝ^{2H×8} Gaussian / √8, so each z_i moves
+  both γ and β.</li>
+<li><b>split</b> (<code>--w split</code>): γ = α·W<sub>γ</sub>·z[0:4], β = α·W<sub>β</sub>·z[4:8], each block Gaussian / √4. For the
+  same per-coordinate z distribution, every γ and β entry has the same variance as under coupled, so ‖γ‖² + ‖β‖² matches
+  (parameter-space parity). Along an axis, split puts all of that energy into γ or into β; coupled spreads it half and half.</li>
+<li><b>Why γ may be weak at this parity</b>: the MLP outputs are small (mean x² ≈ 0.012 at layers 7–23, ≈ 0.035 at layer 31,
+  from the steer PCA fits), so γ ⊙ x is ~1/9 of β in amplitude for the same parameter size. γ is not centred (γ ⊙ mean(x)
+  also shifts the output); that is left for later.</li>
+<li><b>Open loop</b> (<code>research/openloop.py --axes</code>): 96 saved policy inputs per task (t0, t7), fixed flow noise,
+  z = c·√8·e_k for every axis k.</li>
+<li><b>Closed-loop grid</b> (<code>research/run.py</code>): t0 and t7, z = c·√8·e_k for all 8 axes, c ∈ {±0.5, ±1, ±2}, inits 0–7,
+  one episode each, flow noise paired by init; both projections on the same z points. The best grid z per projection (split:
+  best γ axis and best β axis separately) is re-run on held-out inits 10–39 × 2 reps, paired with the ticket round's z = 0.</li>
+<li><b>CEM</b> (<code>research/ticket.py</code>): the ticket FiLM arm repeated with <code>--w split</code>, all else equal (5 tasks,
+  2 chains, pop 6, 2 elites, σ₀ 0.5, box ±1.5, budget 48, held-out inits 10–39 × 2). Coupled FiLM-z8, noise-z8 and z = 0 are
+  the ticket round's runs on the same machine.</li>
+<li>Machine: local RTX 4090 laptop, B = 12 envs, as the ticket round. Queue <code>experiments/libero/film_split/local.sh</code>,
+  figures <code>research/plot_film_split.py</code>.</li>
+</ul>
+
+<h2>Open loop: how much each axis moves the actions</h2>
+<figure><!--fig:openloop--><figcaption>RMS change of the first action (normalized units) vs axis scale, mean over the group's
+axes (band = min–max over axes). Dashed: spread from resampling flow noise at z = 0.</figcaption></figure>
+
+<h2>Closed-loop grid</h2>
+<figure><!--fig:grid--><figcaption>Success on inits 0–7 vs axis scale; mean over the 8 coupled axes, the 4 split γ axes and the 4
+split β axes (band = min–max over axes). c = 0 is z = 0 on the same inits and noise.</figcaption></figure>
+<figure><!--fig:grid_heat--><figcaption>Per-axis success, coupled and split side by side (8 episodes per cell).</figcaption></figure>
+<figure><!--fig:effect--><figcaption>Effect size paired with z = 0 on the same init and flow noise. Top: end-effector path change
+(RMS over steps 20–200, cm). Bottom: share of episodes whose outcome (success/failure) differs from z = 0. Dashed: z = 0 with
+other flow-noise draws (noise reference).</figcaption></figure>
+<h3>Held-out of the grid picks</h3>
+<!--fig:tab_grid_held-->
+<figure><!--fig:grid_held--><figcaption>Held-out success (n = 60, Wilson 95% CI) of each projection's best grid z, with z = 0 on the
+same (init, rep) pairs.</figcaption></figure>
+
+<h2>CEM search (ticket protocol)</h2>
+<!--fig:tab_summary-->
+<figure><!--fig:heldout--><figcaption>Held-out success of each chain's best z, averaged over the 2 chains of a (task, arm)
+(bar = min–max over chains); "mean" = average over the 5 tasks.</figcaption></figure>
+<figure><!--fig:search--><figcaption>Best success so far on inits 0–7 vs candidate index, mean over chains (band = min–max).</figcaption></figure>
+<h3>Where the best z lies</h3>
+<!--fig:tab_cem_z-->
+<p>Candidate 0 (z = 0) of each split chain uses the same seeds as the coupled chain; "identical" checks bitwise
+reproducibility of the pairing.</p>
+
+<h2>Takeaways</h2>
+<!--takeaways-->
+</body></html>

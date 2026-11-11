@@ -19,8 +19,8 @@ from research.plot_steer2 import wilson
 
 TASKS = (0, 7, 9, 4, 2)
 ARMS = ("film8", "noise8", "noise1600")
-NAME = {"film8": "FiLM-z8", "noise8": "noise-z8", "noise1600": "noise-1600", "zero": "z=0"}
-COL = {"film8": "#2a78d6", "noise8": "#eb6834", "noise1600": "#1baa7a", "zero": "#52514e", "steer2": "#8a63d2"}
+NAME = {"film8": "FiLM-z8 coupled", "film8split": "FiLM-z8 split", "noise8": "noise-z8", "noise1600": "noise-1600", "zero": "z=0"}
+COL = {"film8": "#2a78d6", "film8split": "#1baf7a", "noise8": "#eb6834", "noise1600": "#1baa7a", "zero": "#52514e", "steer2": "#8a63d2"}
 LAYOUT = dict(template="plotly_white", font=dict(size=12), margin=dict(l=60, r=20, t=50, b=50),
               legend=dict(orientation="h", y=-0.18))
 
@@ -29,11 +29,11 @@ def jl(p):
     return [json.loads(l) for l in p.read_text().splitlines() if l.strip()] if p.exists() else []
 
 
-def load(root):
+def load(root, arms=ARMS):
     """{(task, arm): {"chains": {rep: [cand]}, "held": {key: rec}}} for runs that exist."""
     data = {}
     for t in TASKS:
-        for a in ARMS:
+        for a in arms:
             d = root / f"t{t}" / a
             if not d.exists():
                 continue
@@ -67,13 +67,13 @@ def save(fig, out, name):
                                                   config={"displaylogo": False}, div_id=name))
 
 
-def fig_search(data, out, budget=48):
+def fig_search(data, out, arms=ARMS, budget=48):
     """Mean best-so-far over chains (early-stopped chains carry their last value), band = min-max over chains."""
-    tasks = [t for t in TASKS if any((t, a) in data for a in ARMS)]
+    tasks = [t for t in TASKS if any((t, a) in data for a in arms)]
     fig = make_subplots(1, len(tasks), subplot_titles=[f"t{t}" for t in tasks], shared_yaxes=True)
     x, shown = np.arange(budget), set()
     for col, t in enumerate(tasks, 1):
-        for a in ARMS:
+        for a in arms:
             chains = list(data.get((t, a), {}).get("chains", {}).values())
             if not chains:
                 continue
@@ -90,10 +90,10 @@ def fig_search(data, out, budget=48):
     save(fig, out, "search")
 
 
-def fig_gen0(data, out):
+def fig_gen0(data, out, arms=ARMS):
     """Generation-0 random candidates (z=0 excluded): how often a prior sample already helps."""
     fig = go.Figure()
-    for a in ARMS:
+    for a in arms:
         xs, ys = [], []
         for t in TASKS:
             for c in data.get((t, a), {}).get("chains", {}).values():
@@ -112,7 +112,7 @@ def fig_gen0(data, out):
     save(fig, out, "gen0")
 
 
-def fig_heldout(data, steer2, out):
+def fig_heldout(data, steer2, out, arms=ARMS):
     """Mean held-out success over chains per (task, arm), bar = min-max over chains; 'mean' = average over the 5 tasks."""
     fig = go.Figure()
     shown = set()
@@ -120,16 +120,16 @@ def fig_heldout(data, steer2, out):
     for t in TASKS:
         if (z := zero_held(data, t)):
             per[t, "zero"] = [z["rate"]]
-        for a in ARMS:
+        for a in arms:
             r = [h["rate"] for k, h in sorted(data.get((t, a), {}).get("held", {}).items()) if k != "zero"]
             if r:
                 per[t, a] = r
-    for a in ("zero",) + ARMS:
+    for a in ("zero",) + arms:
         if all((t, a) in per for t in TASKS):
             per["mean", a] = [np.mean([np.mean(per[t, a]) for t in TASKS])]
     for t in TASKS + ("mean",):
         lab_t = "mean" if t == "mean" else f"t{t}"
-        for a in ("zero",) + ARMS:
+        for a in ("zero",) + arms:
             if (t, a) not in per:
                 continue
             r = np.array(per[t, a])
@@ -151,13 +151,13 @@ def fig_heldout(data, steer2, out):
     save(fig, out, "heldout")
 
 
-def tab_summary(data, steer2, out):
+def tab_summary(data, steer2, out, arms=ARMS):
     s2 = {h["task"]: h for h in steer2.get("heldout", []) if h["w"] == "random-s0"}
     z0s = steer2.get("z0", {})
     rows = []
     for t in TASKS:
         z = zero_held(data, t)
-        for a in ARMS:
+        for a in arms:
             d = data.get((t, a))
             if not d:
                 continue
