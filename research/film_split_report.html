@@ -75,5 +75,29 @@ same (init, rep) pairs.</figcaption></figure>
 reproducibility of the pairing.</p>
 
 <h2>Takeaways</h2>
-<!--takeaways-->
+<div class="key"><p><b>At parameter-space parity, the γ half of split is inert, and split's β half does what coupled does.</b>
+Here FiLM-z8 acts as a shift of the residual stream. Whether γ helps with an energy budget it can actually use is
+still open: this parity never gave it one.</p></div>
+<ul>
+<li><b>Open loop.</b> At c = 1 a γ axis moves the first action by 0.021 / 0.026 (t0 / t7) and a β axis by 0.19 / 0.24, a ratio
+  of ≈ 1/9, which matches RMS(x). Even at c = 4, γ (0.08–0.10) stays far below the flow-noise spread (0.35–0.42). Coupled sits
+  at ≈ β/√2 (0.14–0.15), as expected if it is ~99% β in residual energy.</li>
+<li><b>Grid.</b> γ axes are flat over every scale: t0 0.44–0.56 and t7 0.44–0.69, against z = 0 at 0.50 / 0.38 (8 episodes per
+  point). Their paired eef-path change is at or below the noise reference (t0 20.6–24.3 cm vs 24.4; t7 13.7–19.6 vs 21.2). β axes
+  are steep: only c = ±0.5 helps, |c| = 1 already hurts (0.25), and |c| = 2 gives 0. Coupled falls between the two
+  (|c| = 2: 0.02–0.19).</li>
+<li><b>Held-out of the grid picks.</b> Coupled and β picks transfer: t0 0.92 and 0.80, t7 0.78 and 0.90, against z = 0 at
+  0.42 / 0.43 (all p &lt; 1e-4). γ picks do not: t0 0.35 (p = 0.34) and t7 0.55 (p = 0.12). Their grid scores (0.75, 0.88)
+  came from picking the best of 8-episode cells.</li>
+<li><b>CEM.</b> Split and coupled tie. Mean held-out over 5 tasks × 2 chains is 0.90 for split and 0.89 for coupled. Paired
+  per episode (same init, noise and chain index), split wins 42 and loses 36 (p = 0.57). By task, split / coupled:
+  t0 0.87 / 0.90, t7 0.84 / 0.68, t9 0.93 / 0.91, t4 0.90 / 0.98, t2 0.98 / 1.00. Two chains of the same arm differ about as
+  much as the two arms do (t7 split 0.92 vs 0.77, t4 split 0.98 vs 0.82).</li>
+<li><b>Where CEM puts z.</b> In split's best z, ‖z_γ‖ (0.37–1.63) is about the same size as ‖z_β‖. CEM never pulls γ toward 0,
+  because γ has no effect on success, so split CEM is in effect a 4-d β search with √2 larger β per coordinate.</li>
+<li><b>Pairing holds.</b> The z = 0 grid episodes are bitwise identical between the two projections, and in every chain split
+  candidate 0 matches coupled.</li>
+<li><b>Not run yet.</b> Residual-space parity (γ scaled by 1/RMS(x) per layer, so a γ axis moves actions as much as a β axis)
+  and centred γ (γ ⊙ (x − mean x), which drops the hidden shift γ ⊙ mean x).</li>
+</ul>
 </body></html>
