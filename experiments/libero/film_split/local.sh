@@ -1,6 +1,6 @@
 #!/bin/bash
-# Laptop queue: coupled (w=random) vs split FiLM-z8 at parameter-space parity (α=0.3, B=12 as ticket); re-run to continue.
-# Stage 1: axis grid z = c·√8·e_k on t0/t7 for both W, then held-out (inits 10-39 × 2) of the best axis z per W
+# Laptop queue (run detached: setsid nohup ... &): coupled (w=random) vs split FiLM-z8 at parameter-space parity (α=0.3, B=12 as ticket); re-run to continue.
+# Stage 1: axis grid z = c·√8·e_k on t0/t7 for both W, z = 0 × 8 noise reps, then held-out (inits 10-39 × 2) of the best axis z per W
 # (split: best γ axis and best β axis). Stage 2: ticket CEM arm film8split, 5 tasks × 2 chains (z = 0 held-out from film8).
 cd "$(dirname "$0")/../../.."
 export LIBERO_CONFIG_PATH=$PWD/out/config/libero MUJOCO_GL=egl HF_HUB_OFFLINE=1
@@ -16,6 +16,7 @@ steer() {  # name task args...: research.run into a fresh $G/name; DONE marks co
 for t in 0 7; do
   for w in random split; do steer grid-t$t-$w $t --w $w --z-file $G/axes.npy --scales=-2,-1,-0.5,0.5,1,2 --inits 8; done
 done
+for t in 0 7; do steer zero-t$t $t --w random --zero-reps 8 --z-reps 0 --inits 8 --videos 0; done  # flow-noise reference
 for t in 0 7; do
   for sel in random:all split:gamma split:beta; do
     w=${sel%:*} s=${sel#*:} b=$G/best-t$t-${sel/:/-}.npy
