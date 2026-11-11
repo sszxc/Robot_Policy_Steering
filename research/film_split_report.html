@@ -35,7 +35,12 @@ parameter-space energy. Both projections are kept; neither is the default.</p>
   (parameter-space parity). Along an axis, split puts all of that energy into γ or into β; coupled spreads it half and half.</li>
 <li><b>Why γ may be weak at this parity</b>: the MLP outputs are small (mean x² ≈ 0.012 at layers 7–23, ≈ 0.035 at layer 31,
   from the steer PCA fits), so γ ⊙ x is ~1/9 of β in amplitude for the same parameter size. γ is not centred (γ ⊙ mean(x)
-  also shifts the output); that is left for later.</li>
+  also shifts the output). Both are addressed by the γ·x̂ variant below.</li>
+<li><b>split, γ on x̂</b> (<code>--w split --center</code>, second round): x' = x + γ ⊙ x̂ + β, x̂ = (x − μ)/σ per channel,
+  as FiLM after a non-affine norm (Perez 2018 puts it after BatchNorm). Two estimates of μ, σ: <i>instance</i> = per sample
+  and denoising step over the 50 action tokens (needs no data); <i>BN</i> = pooled over the z = 0 scan fits of the other 9
+  LIBERO-Object tasks (running stats, seen from an unseen task). x̂ has unit variance, so a γ axis moves the residual about as
+  much as a β axis. β is unchanged, so only the 4 γ axes are re-run (grid and held-out, t0/t7); no CEM yet.</li>
 <li><b>Open loop</b> (<code>research/openloop.py --axes</code>): 96 saved policy inputs per task (t0, t7), fixed flow noise,
   z = c·√8·e_k for every axis k.</li>
 <li><b>Closed-loop grid</b> (<code>research/run.py</code>): t0 and t7, z = c·√8·e_k for all 8 axes, c ∈ {±0.5, ±1, ±2}, inits 0–7,
@@ -55,7 +60,7 @@ axes (band = min–max over axes). Dashed: spread from resampling flow noise at 
 <h2>Closed-loop grid</h2>
 <figure><!--fig:grid--><figcaption>Success on inits 0–7 vs axis scale; mean over the 8 coupled axes, the 4 split γ axes and the 4
 split β axes (band = min–max over axes). c = 0 is z = 0 on the same inits and noise.</figcaption></figure>
-<figure><!--fig:grid_heat--><figcaption>Per-axis success, coupled and split side by side (8 episodes per cell).</figcaption></figure>
+<figure><!--fig:grid_heat--><figcaption>Per-axis success, coupled, split and γ·x̂ side by side (8 episodes per cell).</figcaption></figure>
 <figure><!--fig:effect--><figcaption>Effect size paired with z = 0 on the same init and flow noise. Top: end-effector path change
 (RMS over steps 20–200, cm). Bottom: share of episodes whose outcome (success/failure) differs from z = 0. Dashed: z = 0 with
 other flow-noise draws (noise reference).</figcaption></figure>

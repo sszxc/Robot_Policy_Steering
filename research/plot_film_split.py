@@ -1,6 +1,7 @@
 """Figures + tables for docs/results/smolvla_film_split_object.html: coupled (w=random) vs split FiLM-z8 projection.
 
 G = outputs of experiments/libero/film_split/local.sh (openloop-*, grid-*, held-*, zero-*); T = research.ticket root.
+Run keys: random (coupled), split, split-in / split-bn (split with γ on x̂: per-token InstanceNorm / leave-one-out BN stats).
 python -m research.plot_film_split out/libero/smolvla/film_split out/ticket-local --out out/film-split-figs \
     --template research/film_split_report.html --page docs/results/smolvla_film_split_object.html
 """
@@ -18,12 +19,15 @@ from research.plot_icl import page
 from research.plot_steer2 import wilson
 
 TASKS = (0, 7)
-# group -> (run W, axes, colour); split axes < 4 drive γ only, axes ≥ 4 β only
+# group -> (run key, axes, colour); split axes < 4 drive γ only, axes ≥ 4 β only; split-in/bn grids hold the γ axes only
 GROUPS = {"coupled": ("random", range(8), "#2a78d6"), "split γ axes": ("split", range(4), "#e87ba4"),
-          "split β axes": ("split", range(4, 8), "#eda100")}
+          "split β axes": ("split", range(4, 8), "#eda100"), "γ·x̂ axes, instance": ("split-in", range(4), "#6250d6"),
+          "γ·x̂ axes, BN": ("split-bn", range(4), "#008300")}
+RUNS = ("random", "split", "split-in", "split-bn")
 ARMS = ("film8", "film8split", "noise8")
 HELD = {"random-all": ("coupled pick", "#2a78d6"), "split-gamma": ("split pick, γ axes", "#e87ba4"),
-        "split-beta": ("split pick, β axes", "#eda100")}
+        "split-beta": ("split pick, β axes", "#eda100"), "split-in-gamma": ("γ·x̂ pick, instance", "#6250d6"),
+        "split-bn-gamma": ("γ·x̂ pick, BN", "#008300")}
 ZERO = "#52514e"
 save = pt.save
 
@@ -37,7 +41,7 @@ def fig_openloop(G, out, rep):
     fig = make_subplots(1, len(TASKS), subplot_titles=[f"t{t}" for t in TASKS], shared_yaxes=True)
     for col, t in enumerate(TASKS, 1):
         for name, (w, axes, color) in GROUPS.items():
-            f = G / f"openloop-t{t}-{'coupled' if w == 'random' else 'split'}" / "openloop.npz"
+            f = G / f"openloop-t{t}-{'coupled' if w == 'random' else w}" / "openloop.npz"
             if not f.exists():
                 continue
             d = np.load(f)
@@ -63,7 +67,7 @@ def fig_openloop(G, out, rep):
 
 
 def grid_runs(G, t):
-    R = {w: G / f"grid-t{t}-{w}" for w in ("random", "split")}
+    R = {w: G / f"grid-t{t}-{w}" for w in RUNS}
     return {w: analyze.load(d) for w, d in R.items() if (d / "DONE").exists()}
 
 
@@ -104,9 +108,9 @@ def fig_grid(G, out, rep):
                             hovertemplate=f"{name} c=%{{x}}: mean success %{{y:.3f}} ({len(axes)} axes × 8 inits)<extra></extra>")
             rep.setdefault("grid", {}).setdefault(f"t{t}", {})[name] = dict(zip(map(str, x), S.mean(0).round(3).tolist()))
         rep["grid"][f"t{t}"]["zero"] = float(p0)
-        if len(runs) == 2:  # both runs contain the same z=0 episodes: bitwise reproducibility check
-            a, b = (runs[w] for w in ("random", "split"))
-            rep["grid"][f"t{t}"]["zero_identical"] = bool(np.array_equal(a["steps"][a["ep_z"] == 0], b["steps"][b["ep_z"] == 0]))
+        if len(runs) > 1:  # every run contains the same z=0 episodes: bitwise reproducibility check
+            s0 = [e["steps"][e["ep_z"] == 0] for e in runs.values()]
+            rep["grid"][f"t{t}"]["zero_identical"] = all(np.array_equal(s0[0], s) for s in s0[1:])
         fig.add_scatter(x=[0], y=[p0], mode="markers", marker=dict(color=ZERO, size=11, symbol="x"), name="z = 0",
                         legendgroup="z0", showlegend=col == 1, row=1, col=col, hovertemplate="z=0: %{y:.3f}<extra></extra>")
     fig.update_xaxes(title_text="axis scale c (z = c·√8·e_k)")
@@ -116,19 +120,23 @@ def fig_grid(G, out, rep):
 
 
 def fig_grid_heat(G, out):
-    """Per-axis success, coupled | split side by side; buttons select the task."""
-    fig = make_subplots(1, 2, subplot_titles=["coupled", "split (axes 0–3 γ, 4–7 β)"], shared_yaxes=True,
-                        horizontal_spacing=0.04)
+    """Per-axis success, coupled | split | γ·x̂ (instance, BN) side by side; buttons select the task."""
+    fig = make_subplots(1, 3, subplot_titles=["coupled", "split (axes 0–3 γ, 4–7 β)", "split, γ on x̂ (γ axes)"],
+                        horizontal_spacing=0.07)
     vis = []
     for t in TASKS:
         runs = grid_runs(G, t)
-        for col, w in enumerate(("random", "split"), 1):
-            if w not in runs:
+        for col, ws in enumerate((["random"], ["split"], ["split-in", "split-bn"]), 1):
+            if not all(w in runs for w in ws):
                 continue
-            ep = runs[w]
-            cs = np.unique(ep["scale"][ep["ep_z"] > 0])
-            S = np.array([[ep["success"][(ep["dir"] == k) & (ep["scale"] == c)].mean() for c in cs] for k in range(8)])
-            ylab = [f"e{k}" if w == "random" else f"e{k} ({'γ' if k < 4 else 'β'})" for k in range(8)]
+            S, ylab = [], []
+            for w in ws:
+                ep = runs[w]
+                cs = np.unique(ep["scale"][ep["ep_z"] > 0])
+                K = len(np.unique(ep["dir"][ep["ep_z"] > 0]))
+                S += [[ep["success"][(ep["dir"] == k) & (ep["scale"] == c)].mean() for c in cs] for k in range(K)]
+                ylab += [f"e{k}" if w == "random" else f"e{k} ({'γ' if k < 4 else 'β'})" if w == "split"
+                         else f"e{k} γ, {w[6:]}" for k in range(K)]
             fig.add_heatmap(z=S, x=[f"{c:+g}" for c in cs], y=ylab, zmin=0, zmax=1, colorscale="Blues", showscale=col == 1,
                             visible=t == TASKS[0], row=1, col=col, colorbar=dict(title="success"),
                             hovertemplate="%{y}, c %{x}: success %{z:.2f}<extra></extra>")
