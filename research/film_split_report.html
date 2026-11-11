@@ -56,10 +56,14 @@ parameter-space energy. Both projections are kept; neither is the default.</p>
 <h2>Open loop: how much each axis moves the actions</h2>
 <figure><!--fig:openloop--><figcaption>RMS change of the first action (normalized units) vs axis scale, mean over the group's
 axes (band = min–max over axes). Dashed: spread from resampling flow noise at z = 0.</figcaption></figure>
+<!--fig:tab_jac-->
+<p>Whole action chunk (50 steps × 7 dims), central differences at |δz_i| = 1, mean over the 96 inputs. Effective rank =
+(Σs²)² / Σs⁴ of the singular values. The last column asks how much of what z[0:4] does to the actions z[4:8] cannot do
+(for coupled both halves mix γ and β).</p>
 
 <h2>Closed-loop grid</h2>
-<figure><!--fig:grid--><figcaption>Success on inits 0–7 vs axis scale; mean over the 8 coupled axes, the 4 split γ axes and the 4
-split β axes (band = min–max over axes). c = 0 is z = 0 on the same inits and noise.</figcaption></figure>
+<figure><!--fig:grid--><figcaption>Success on inits 0–7 vs axis scale; mean over the 8 coupled axes, the 4 split γ axes, the 4
+split β axes and the 4 γ·x̂ axes of each statistic (band = min–max over axes). c = 0 is z = 0 on the same inits and noise.</figcaption></figure>
 <figure><!--fig:grid_heat--><figcaption>Per-axis success, coupled, split and γ·x̂ side by side (8 episodes per cell).</figcaption></figure>
 <figure><!--fig:effect--><figcaption>Effect size paired with z = 0 on the same init and flow noise. Top: end-effector path change
 (RMS over steps 20–200, cm). Bottom: share of episodes whose outcome (success/failure) differs from z = 0. Dashed: z = 0 with
@@ -81,8 +85,8 @@ reproducibility of the pairing.</p>
 
 <h2>Takeaways</h2>
 <div class="key"><p><b>At parameter-space parity, the γ half of split is inert, and split's β half does what coupled does.</b>
-Here FiLM-z8 acts as a shift of the residual stream. Whether γ helps with an energy budget it can actually use is
-still open: this parity never gave it one.</p></div>
+Here FiLM-z8 acts as a shift of the residual stream. This parity never gave γ an energy budget it could use; the
+second round below does.</p></div>
 <ul>
 <li><b>Open loop.</b> At c = 1 a γ axis moves the first action by 0.021 / 0.026 (t0 / t7) and a β axis by 0.19 / 0.24, a ratio
   of ≈ 1/9, which matches RMS(x). Even at c = 4, γ (0.08–0.10) stays far below the flow-noise spread (0.35–0.42). Coupled sits
@@ -102,7 +106,25 @@ still open: this parity never gave it one.</p></div>
   because γ has no effect on success, so split CEM is in effect a 4-d β search with √2 larger β per coordinate.</li>
 <li><b>Pairing holds.</b> The z = 0 grid episodes are bitwise identical between the two projections, and in every chain split
   candidate 0 matches coupled.</li>
-<li><b>Not run yet.</b> Residual-space parity (γ scaled by 1/RMS(x) per layer, so a γ axis moves actions as much as a β axis)
-  and centred γ (γ ⊙ (x − mean x), which drops the hidden shift γ ⊙ mean x).</li>
+</ul>
+<h3>Second round: γ on x̂</h3>
+<div class="key"><p><b>Once γ acts on normalized x, its axes behave like β axes.</b> They move the actions as much, they are
+as sensitive to scale, and the best γ axis lifts held-out success about as much as the best β axis. γ was inert in the first
+round because it multiplied a small, uncentred x. Instance and BN statistics give nearly the same picture.</p></div>
+<ul>
+<li><b>Open loop.</b> At c = 1 a γ·x̂ axis moves the first action by 0.19 / 0.22 (instance, t0 / t7) and 0.20 / 0.22 (BN),
+  against 0.19 / 0.24 for β and 0.02 / 0.03 for raw γ. In the chunk Jacobian, 0.62–0.70 of the γ response lies outside
+  what the β columns can do, and the effective rank rises from 2.2–2.4 (split) to 3.2–3.7, at or above coupled (3.0–3.2).</li>
+<li><b>Grid.</b> γ·x̂ axes are as steep as β axes: |c| = 2 gives 0–0.13 success, |c| = 1 mostly hurts, and c = ±0.5 is the
+  usable range. Instance and BN agree axis by axis. −e2 is the best γ axis on both tasks with both statistics (0.75–0.88 at
+  c = −0.5 and −1), while the best β axis differs by task (t0 +e7, t7 +e5).</li>
+<li><b>Held-out.</b> The γ·x̂ picks transfer, against z = 0 at 0.42 / 0.43:
+  t0 instance 0.77 (22/1, p = 6e-6) and BN 0.73 (23/4, p = 3e-4);
+  t7 instance 0.68 (18/3, p = 0.002) and BN 0.83 (27/3, p = 8e-6).
+  Paired against the β pick of the same task (0.80 / 0.90), only t7 instance is lower (1/14, p = 0.001). Each pick is one
+  z chosen from 8-episode cells, so gaps between picks say little about the spaces.</li>
+<li><b>Effect size.</b> The eef-path change sits near the flow-noise level for every group except raw γ on t7, so it does
+  not separate γ·x̂ from β.</li>
+<li><b>Not run yet.</b> CEM with γ·x̂, which would search 8 working dimensions instead of about 4.</li>
 </ul>
 </body></html>

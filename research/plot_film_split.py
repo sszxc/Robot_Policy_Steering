@@ -28,6 +28,8 @@ ARMS = ("film8", "film8split", "noise8")
 HELD = {"random-all": ("coupled pick", "#2a78d6"), "split-gamma": ("split pick, γ axes", "#e87ba4"),
         "split-beta": ("split pick, β axes", "#eda100"), "split-in-gamma": ("γ·x̂ pick, instance", "#6250d6"),
         "split-bn-gamma": ("γ·x̂ pick, BN", "#008300")}
+SHORT = {"zero": "z=0", "random-all": "coupled", "split-gamma": "split γ", "split-beta": "split β",
+         "split-in-gamma": "γ·x̂ inst.", "split-bn-gamma": "γ·x̂ BN"}  # held-out x tick labels
 ZERO = "#52514e"
 save = pt.save
 
@@ -64,6 +66,29 @@ def fig_openloop(G, out, rep):
     fig.update_yaxes(title_text="RMS Δa of first action (normalized)", row=1, col=1)
     layout(fig, height=380, title="Open loop: action change per axis (96 saved inputs, fixed flow noise)")
     save(fig, out, "openloop")
+
+
+def tab_jac(G, out, rep):
+    """Open-loop chunk Jacobian ∂a/∂z [T·A, 8] per input: effective rank (participation ratio of singular values) and the
+    share of the z[:4] response (split: γ) outside the span of the z[4:] columns (split: β); mean over inputs."""
+    rows = []
+    for t in TASKS:
+        for name, w in [("coupled", "random"), ("split", "split"), ("split, γ·x̂ instance", "split-in"), ("split, γ·x̂ BN", "split-bn")]:
+            f = G / f"openloop-t{t}-{'coupled' if w == 'random' else w}" / "openloop.npz"
+            if not f.exists():
+                continue
+            J = np.load(f)["jac"]
+            J = J.reshape(J.shape[0], -1, J.shape[-1])
+            sv = np.linalg.svd(J, compute_uv=False)
+            pr = ((sv**2).sum(1) ** 2 / (sv**4).sum(1)).mean()
+            Q = np.linalg.qr(J[..., 4:])[0]
+            res = J[..., :4] - Q @ (Q.transpose(0, 2, 1) @ J[..., :4])
+            outside = ((res**2).sum((1, 2)) / (J[..., :4] ** 2).sum((1, 2))).mean()
+            rows.append([f"t{t}", name, f"{pr:.2f}", f"{outside:.2f}"])
+            rep.setdefault("jac", {}).setdefault(f"t{t}", {})[w] = {"eff_rank": float(pr), "outside": float(outside)}
+    head = ["task", "projection", "effective rank of ∂a/∂z (8 columns)", "share of z[0:4] response outside span of z[4:8]"]
+    (out / "tab_jac.html").write_text("<table><tr>" + "".join(f"<th>{h}</th>" for h in head) + "</tr>" +
+                                      "".join("<tr>" + "".join(f"<td>{c}</td>" for c in r) + "</tr>" for r in rows) + "</table>")
 
 
 def grid_runs(G, t):
@@ -146,7 +171,7 @@ def fig_grid_heat(G, out):
     buttons = [dict(label=f"t{t}", method="update", args=[{"visible": [v == t for v in vis]}]) for t in TASKS]
     fig.update_xaxes(title_text="axis scale c")
     layout(fig, height=420, title="Per-axis grid success (8 inits per cell)", margin=dict(l=80, r=20, t=100, b=50),
-           updatemenus=[dict(buttons=buttons, type="buttons", direction="right", x=0, y=1.25, xanchor="left")])
+           updatemenus=[dict(buttons=buttons, type="buttons", direction="right", x=1, y=1.25, xanchor="right")])
     fig.update_yaxes(autorange="reversed")
     save(fig, out, "grid_heat")
 
@@ -218,7 +243,7 @@ def fig_tab_held(G, T, out, rep):
                 continue
             h = recs[key]
             p, lo, hi = wilson(sum(h["success"]), len(h["success"]))
-            fig.add_scatter(x=[[f"t{t}"], [name]], y=[p], error_y=dict(type="data", symmetric=False, array=[hi - p],
+            fig.add_scatter(x=[[f"t{t}"], [SHORT[key]]], y=[p], error_y=dict(type="data", symmetric=False, array=[hi - p],
                             arrayminus=[p - lo]), mode="markers", marker=dict(color=color, size=11), name=name,
                             legendgroup=key, showlegend=t == TASKS[0], hovertemplate=f"t{t} {name}: %{{y:.3f}} [{lo:.2f}, {hi:.2f}]<extra></extra>")
             if key == "zero":
@@ -269,6 +294,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     rep = {}
     fig_openloop(args.G, args.out, rep)
+    tab_jac(args.G, args.out, rep)
     fig_grid(args.G, args.out, rep)
     fig_grid_heat(args.G, args.out)
     fig_effect(args.G, args.out, rep)
