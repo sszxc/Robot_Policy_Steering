@@ -24,6 +24,7 @@ def main():
     parser.add_argument("--alpha", type=float, default=1.0)
     parser.add_argument("--w", default="random")
     parser.add_argument("--w-seed", type=int, default=0)
+    parser.add_argument("--center", default=None, help='expert_film γ on normalized x: "token" or a pool_stats.py file')
     parser.add_argument("--n-z", type=int, default=8)
     parser.add_argument("--z-seed", type=int, default=0)
     parser.add_argument("--axes", action="store_true", help="u_k = √dim·e_k (first n-z axes) instead of random")
@@ -35,7 +36,7 @@ def main():
     out = rollout.new_run_dir(args, f"openloop-{args.suite}-t{args.task_id}")
     policy, cfg = rollout.load_policy(args, rollout.env_config(args))
     dim, set_z = INJECT[args.inject](policy, layers=[int(l) for l in args.layers.split(",")],
-                                     dim=args.dim, alpha=args.alpha, w=args.w, seed=args.w_seed)
+                                     dim=args.dim, alpha=args.alpha, w=args.w, seed=args.w_seed, center=args.center)
     bank = torch.load(args.inputs)
     N = min(args.max_inputs, len(bank["task"]))
     idx = np.random.default_rng(0).choice(len(bank["task"]), N, replace=False)
