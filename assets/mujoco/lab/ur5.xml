@@ -133,6 +133,10 @@
                     <geom class="visual" mesh="hand_mount" material="mount_black" pos="0 0 0.006" quat="0.5 0.5 0.5 0.5" />
                     <geom type="cylinder" size="0.04 0.008" pos="0 0 0.014" group="3" />
                     <site name="hand_attach" pos="0 0 0.024" />
+                    <!-- ELP wrist camera, hand-eye calibrated 2026-11-12 (wrist_camera.json; ros2_ur scripts/calib).
+                         Ideal pinhole on the calibrated optical axis, 108 x 90 deg at 88 x 64 px (inside the real image,
+                         which spans -56..54 x -45..46 deg): undistort real images to it (docs/notes.md) -->
+                    <camera name="wrist" pos="0.04435 -0.04729 0.04253" quat="-0.073880 -0.685993 0.718847 -0.084934" fovy="90" resolution="88 64" />
                   </body>
                 </body>
               </body>

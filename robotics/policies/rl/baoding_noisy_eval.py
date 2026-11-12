@@ -173,6 +173,8 @@ if __name__ == "__main__":
     p.add_argument("--no_g_obs", action="store_true", help="policy without gravity obs (zero-shot tilt eval)")
     p.add_argument("--dr", action="store_true", help="physics domain randomization in the eval env")
     p.add_argument("--vis_dr", action="store_true", help="visual randomization in the eval env")
+    p.add_argument("--bg", help="--vis_dr background library (.npy from baoding_real --bg)")
+    p.add_argument("--stack", type=int, default=2, help="stacked frames of the student")
     p.add_argument("--random", action="store_true")
     p.add_argument("--seeds", type=int, default=2, help="--random: batches of --episodes")
     p.add_argument("--tilt_grid", action="store_true")
@@ -186,7 +188,8 @@ if __name__ == "__main__":
     if a.dr:
         v2["dr"] = True
     if a.vis_dr:
-        v2["vis_dr"] = True
+        v2.update(vis_dr=True, bg=a.bg)
+    v2["stack"] = a.stack
     if a.tilt is not None:
         v2.update(tilt_max=np.radians(a.tilt), g_obs=not a.no_g_obs, tilt_about=a.tilt_about)
     env = BaodingNoisyEnv(render=True, **(off if a.clean else {}), **v2)

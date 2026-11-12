@@ -11,7 +11,7 @@ import numpy as np
 
 from robotics.sim import Sim, cli_sim, hand as H, scene
 
-R, MASS = 0.02, 0.06          # ball radius (m) / mass (kg)
+R, MASS = 0.02, 0.010         # ball radius (m) / mass (kg): the real printed PLA balls
 DURATION = 20.0               # evaluation length (s)
 # Params: a pitch (fingers-down +), b roll (thumb-side-down +), f Hz; per finger k: mcp/pip offset+amp, phase;
 # thumb (planar 3R in the palm plane): cmc/pitch/ip offset+amp+phase, fixed yaw.
@@ -46,7 +46,7 @@ def ball_spec(a, b, solref=(0.005, 1)):
     Rh = np.zeros(9)
     mujoco.mju_quat2Mat(Rh, q)
     Rh = Rh.reshape(3, 3)
-    for i, rgba in enumerate([(0.85, 0.2, 0.2, 1), (0.2, 0.4, 0.9, 1)]):
+    for i, rgba in enumerate([(0.86, 0.88, 0.82, 1), (0.86, 0.78, 0.19, 1)]):  # real balls: white, yellow
         p = np.array([0, 0, 0.3]) + Rh @ BALL_START[i]
         body = spec.worldbody.add_body(name=f"ball{i}", pos=p.tolist())
         body.add_freejoint()

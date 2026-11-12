@@ -299,3 +299,71 @@ No episode ended in a NaN state. Track error grows 7–10 mm (nominal) → 12–
    randomization, the D student keeps 59% (87% of its teacher's 68%) and loses only ~4 points on clean images.
 5. DAgger stays lossless whenever the images are clean (student = teacher in every stage); the remaining
    student–teacher gap (68 → 59) comes from the visual randomization.
+
+### Real camera on the printed mount (2026-11-10; estimate from CAD, not measured)
+- Camera: ELP-USBGS1200P01-H120 (AR0234 global shutter, 1920×1200, 3 µm, 38×38 mm board, M12 "low distortion"
+  lens, HFOV 120° per spec table / ~126° per listing text). Pinhole at HFOV 120°: f ≈ 554 px, VFOV 94.5°.
+- `out/print/Robotis Hand - UR Arm Mount.stl` holds three parts in the lab `hand_mount.stl` frame: the hand–flange
+  adapter (same surfaces as the lab mesh), a RealSense bracket (D4xx plate, 2×M3 45 mm apart) and an ELP bracket
+  (X plate, 34.0 mm square hole pattern). Both brackets have the same 3.5 mm base plate that drops into the
+  adapter's top slot (y 7–10.5) on the PCD-63 bolts at 60/90/120°; the ELP one is exported 30 mm off along +y.
+  Mounted ELP bracket = part shifted by (0, −30, 0): `out/print/mount_views/elp_bracket_mounted.stl`.
+  Mesh → hand frame: hb = (mz, mx, my − 18) mm (lab `ur5.xml`: hand_mount quat 0.5⁴, hand_attach 24 mm).
+- Assuming the board lies on the X face that points at the fingers and the optical center is 15 mm in front of
+  it (±5 mm, unknown lens height): camera at hb (46, −48, 11) mm (25 mm above the palm ≈ ball-center height, pinky
+  side, just in front of the hand base), optical axis hb (0, 0.326, 0.946) = parallel to the palm, yawed 19° toward
+  the thumb. tool0 frame: (−48, −46, 35) mm, axis (0.326, 0, 0.946). Orbit center 89 mm away, 14° off-axis.
+  The camera cannot go higher (user): only the palm-plane side is available.
+- Consequence: the orbit plane is seen edge-on (balls move left–right and change size; the near ball hides most of
+  the far one twice per turn), unlike the 55° oblique sim view. Renders: `out/print/mount_views/` (elp_views,
+  policy64, third_person).
+- Student encoder option `baoding_dagger --enc ssm` (per-frame CNN, 32×32 maps → 32 spatial-softmax keypoints per
+  frame; 0.33M params vs 2.4M flatten); not trained yet (GPU held by the film_split queue).
+
+### Wrist camera calibrated; sim camera replaced (2026-11-12)
+- Calibration (ros2_ur `scripts/calib`, ChArUco on a laptop screen, 81 views): intrinsics rms 0.35 px, rational
+  model, HFOV 109.6° / VFOV 91.0° at 640×480 (f ≈ 240 px); hand-eye reprojection 0.78 px, board spread 1.3 mm /
+  0.40°. Copy of the result: `assets/mujoco/lab/wrist_camera.json` (K, dist, `T_hand_cam`, `T_tool0_cam`).
+- Camera in the hand frame: (44.3, −47.3, 18.5) mm, optical axis (−0.010, 0.223, 0.975) = parallel to the palm,
+  yawed 13° toward the thumb (CAD estimate: (46, −48, 11) mm, 19°); image down = palm normal (hand body at the top), thumb left.
+- Sim: camera `wrist` on `hand_mount` in `lab/ur5.xml` = ideal pinhole on the calibrated optical axis, fovy 90°,
+  88×64 px → 108°×90°. This lies inside the real image (−56..54° × −45..46° about the axis) and holds the balls
+  over the whole orbit (−53..9° × −21..18°; a 90° square would cut the thumb-side ball).
+- `baoding_noisy_env` `cam="wrist"` now reads that camera (pose, fovy, resolution) instead of the 55° oblique
+  placeholder; the wrist image is 88×64 (top stays 64×64), `baoding_dagger` takes the size from the env. Earlier
+  wrist-cam students / results (stages A–D above) used the old oblique 64×64 view and do not load into this one.
+- Real image → policy image (lens distortion removed, same pinhole as the sim):
+  `Kn = [[32, 0, 43.5], [0, 32, 31.5], [0, 0, 1]]`;
+  `m1, m2 = cv2.initUndistortRectifyMap(K, dist, None, Kn, (88, 64), cv2.CV_32FC1)`; `cv2.remap(img, m1, m2, ...)`
+  (blur or area-average first: one policy pixel covers about 5–7 real pixels).
+- Checked: lab scene rendered from `wrist` at recorded arm + finger angles overlays the undistorted real frames
+  (fingers and forearm); Warp env returns (64, 88, 6) for wrist and (64, 64, 6) for top. Not retrained yet.
+
+## Baoding v4: toward the real hand (2026-11-12)
+Arm static during the rotation (per-episode tilt, 35° cap about nominal as in v3). Real data from ros2_ur
+`out/calib`: `balls/` (33 frames, clicked circles, colors), `background/` (115 frames around the palm-up arm pose).
+
+### Calibration check
+- Two independent calibrations (11-11: 26 views, 11-12: 81 views, different screens) agree: f 242.4 / 240.6 px,
+  camera pose 1.8 / 1.1 / 3.2 mm and 0.56°. `ur5.xml` camera = `wrist_camera.json` (position, rotation).
+- Weak spot: thumb-side image edge (few corners there). Same ray projected with both intrinsics: 1–3 px in the
+  center / right, 7 px at −45°, 10 px at −53° (the thumb-side ball's extreme) = up to ~1.3 policy px. Covered by the
+  camera jitter below; no recapture.
+
+### Stage 0: env aligned to the real setup
+- Balls: 10 g (`baoding.py` MASS), white = ball0, yellow = ball1 (albedo from the measured sRGB). The 60 g B2 teacher
+  zero-shot at 10 g: 92 / 81% pace, 0.09 / 0.17 drops (`eval --random`, 2 × 128; at 60 g it was 88 / 78%, 0.09 / 0.18),
+  so the lighter balls do not change the task; later teachers warm-start from B2.
+- Wrist image: rendered at 2× (176×128), floor not rendered, rays that miss (depth 0) = background mask, composite,
+  then 2×2 average to 88×64. One fill light along the view direction (the real balls have no dark side).
+- `--vis_dr` v2 (`VIS` in `baoding_noisy_env.py`), per episode: background = 70% a real lab frame (`--bg`, library from
+  `baoding_real --bg`; rotation ±40°, zoom 1–1.6, shift ±25%, flip, mirrored borders) / 30% smooth random colors,
+  gain ×[0.6, 1.3]; camera jitter ±5 mm, ≤3° (was ±15 mm, 5°: CAD guess → calibrated); light directions rotated ≤40°;
+  ball gain ×[0.75, 1.15] with ±7% tint; hand gray [0.03, 0.25] (real ≈ 0.1); image delay 1 (p 0.7) or 2 steps (real
+  image age at a 20 Hz policy ≈ 35–70 ms); contrast / brightness / white balance ±7% / pixel noise as before.
+- Not randomized: focal length (the renderer precomputes its rays; ±2% ≈ 1 px at the edge, inside the rotation jitter).
+- Images: `docs/results/baoding_real_vis.html` (real frames, sim before / after the composite, backgrounds alone).
+  Ball pixels, mean sRGB real vs sim: white (225, 223, 203) vs (207, 213, 203); yellow (205, 184, 67) vs (217, 209, 62).
+- Known differences left: the real palm / mount fills more of the image top than the sim hand base; the real
+  background frames contain the (open) real fingers, which stay in the composite as distractors.
+- Two `BaodingNoisyEnv(warp=True)` in one process fail in `mjx.forward` (model metadata equality): one env per process.

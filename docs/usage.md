@@ -49,6 +49,7 @@ Shared arguments: `--steps` env steps, `--envs` parallel envs, `--evals` evals d
 | `python -m robotics.policies.rl.baoding_noisy_train` | `--steps 50000000 --envs 2048 --evals 25 --out out/rl/baoding_noisy/teacher` | Noisy env, pace-capped reward, critic sees privileged state. `--vision`: top-down 64 px RGB actor (defaults `--envs 1024` (512 fits a 16 GB laptop GPU), `--out out/rl/baoding_noisy/vision_rl`); `--period 16`, `--w_turn 50` |
 | `python -m robotics.policies.rl.baoding_dagger` | `--teacher out/rl/baoding_noisy/teacher/best_params.pkl --iters 10 --envs 192 --grad_steps 3000 --out out/rl/baoding_noisy/dagger` | Distills the teacher into an RGB student (`student.pkl`); `--w_aux 0.1` ball-position loss. Keeps all frames in RAM (~1 GB per iteration) |
 | v2: speed command + MuJoCo Warp | `baoding_noisy_train --periods 2 16 --warp` (teacher, 80M steps ≈ 17 min, `--out` default `out/rl/baoding_cmd/teacher`); add `--vision --envs 512 --w_over 1` for vision PPO (`XLA_PYTHON_CLIENT_MEM_FRACTION=0.7`; without `--w_over` it learned to over-spin); `baoding_dagger --periods 2 16 --warp --teacher out/rl/baoding_cmd/teacher/best_params.pkl` | `--periods LO HI`: per-episode period (s/rev), log-uniform, ω/π appended to every obs. `--warp`: MJX-Warp physics + mesh/light rendering (needs `mujoco-warp==3.7.0`, `warp-lang==1.12.0`). Don't start a second GPU job next to a near-full one: a failed Warp allocation shows up as `CUDA_ERROR_ILLEGAL_ADDRESS` |
+| v4: real-hand setup | `python -m robotics.policies.rl.baoding_real --bg` (background library → `out/rl/baoding_real/bg.npy`), `--viz` (→ `docs/results/baoding_real_vis.html`), `--check STUDENT.pkl` (ball-position head on the real labelled frames); `baoding_dagger --cam wrist --dr --vis_dr --bg out/rl/baoding_real/bg.npy --stack 3 --enc ssm --envs 128`; `baoding_noisy_train --dr --restore NON_DR.pkl` pads the critic input | Needs ros2_ur `out/calib` (`--calib`). `--stack` frames per image obs (eval needs the same `--stack`, and `--bg` with `--vis_dr`). One Warp env per process. Full chain: `out/rl/baoding_real/pipeline.sh` |
 
 ### CPU eval (video)
 
@@ -144,6 +145,14 @@ python -m robotics.hardware.ur5.ur5_move_servo --ip 192.168.1.132
 and returns to its starting pose. `ur5_move_servo` executes the existing joint
 sine cycle using the UR5 CB3 example's 125 Hz period. Choose the device address
 with `--ip` or `THESIS_UR5_IP` (default `192.168.1.132`).
+
+## RealSense viewer
+
+Needs `pyrealsense2` (pip) and a USB 3 link; `q`/Esc quits, `s` saves PNG + depth (m, `.npy`) to `out/realsense`.
+
+```bash
+python -m robotics.hardware.realsense.viewer --width 640 --height 480 --fps 30
+```
 
 ## SmolVLA / LIBERO
 

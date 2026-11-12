@@ -38,6 +38,18 @@ def load_policy(path, vision, env):
     return jax.jit(lambda obs: pol(obs, jax.random.PRNGKey(0))[0])
 
 
+def pad_critic(params, n, at):
+    """Warm-start a --dr run from a non-DR checkpoint: insert n critic inputs (zero weights) before the last `at`."""
+    norm, pol, val = params
+    ins = lambda x, v: jnp.concatenate([x[:-at], jnp.full((n,) + x.shape[1:], v, x.dtype), x[-at:]])
+    k = "privileged_state"
+    cnt = float(norm.count.lo) + 2.0 ** 32 * float(norm.count.hi)
+    norm = norm.replace(mean={**norm.mean, k: ins(norm.mean[k], 0.0)}, std={**norm.std, k: ins(norm.std[k], 0.2)},
+                        summed_variance={**norm.summed_variance, k: ins(norm.summed_variance[k], 0.04 * cnt)})
+    h0 = val["params"]["hidden_0"]
+    return norm, pol, {"params": {**val["params"], "hidden_0": {**h0, "kernel": ins(h0["kernel"], 0.0)}}}
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--steps", type=int, default=50_000_000)
@@ -80,6 +92,9 @@ if __name__ == "__main__":
           if a.vision else dict(num_envs=a.envs or 2048, batch_size=256, num_minibatches=16, unroll_length=40,
                                 num_eval_envs=128))
     tilt = None if a.tilt is None else np.radians(a.tilt)
+    restore = pickle.load(open(a.restore, "rb")) if a.restore else None
+    if a.dr and restore is not None and restore[2]["params"]["hidden_0"]["kernel"].shape[0] == 85 + (a.periods is not None) + 3 * (tilt is not None):
+        restore = pad_critic(restore, 7, (a.periods is not None) + 3 * (tilt is not None))
     env = lambda n: BaodingNoisyEnv(a.period, a.w_turn, render=a.vision, periods=a.periods, warp=a.warp, nworld=n,
                                     w_over=a.w_over, cam=a.cam, tilt_max=tilt, dr=a.dr, tilt_about=a.tilt_about)
     ppo.train(
@@ -87,5 +102,5 @@ if __name__ == "__main__":
         num_updates_per_batch=4, discounting=0.99, learning_rate=3e-4, entropy_cost=1e-2, reward_scaling=0.1,
         normalize_observations=True, max_grad_norm=1.0, clipping_epsilon=0.2, network_factory=make_net(a.vision),
         progress_fn=progress, policy_params_fn=save, vision=a.vision, seed=0,
-        restore_params=pickle.load(open(a.restore, "rb")) if a.restore else None, **kw,
+        restore_params=restore, **kw,
     )

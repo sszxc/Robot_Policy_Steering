@@ -2,15 +2,18 @@
 (hand proprio + target phase, no ball info), 'privileged_state' (critic), and with render=True 'pixels/view_0'.
 v2 options: periods=(lo, hi) samples a per-episode speed command (appended to all obs); warp=True uses MJX-Warp
 physics + mesh rendering (needs nworld = the vmapped batch size); cam='wrist' (warp only) swaps the top-down
-camera for an oblique wrist camera. tilt_max (rad) samples the palm tilt per episode (gravity direction in the hand
+camera for the calibrated real wrist camera (88 x 64 px; top is 64 x 64). tilt_max (rad) samples the palm tilt per episode (gravity direction in the hand
 frame, applied as per-body forces); g_obs appends that direction (3) before the command in all obs.
 dr=True: per-episode physics randomization (DR ranges below; model fields overridden inside the vmapped step),
 0/1/2-step action delay, and a 7-dim DR summary in privileged_state (before g / command).
-vis_dr=True (warp render): per-episode camera-mount jitter, ball/hand/floor colors, and image brightness / contrast /
-white balance / pixel noise."""
+vis_dr=True (warp render): per-episode camera-mount jitter, ball/hand/floor colors, light direction, image
+brightness / contrast / white balance / pixel noise; wrist camera also: background composite (bg = real-frame
+library from baoding_real --bg, mixed with smooth random colors) and a 1-2 step image delay.
+stack = number of stacked frames in 'pixels/view_0' (newest first)."""
 import jax
 import jax.numpy as jnp
 import mujoco
+from jax.scipy.ndimage import map_coordinates
 import numpy as np
 from brax.envs.base import Env, State
 from mujoco import mjx
@@ -21,25 +24,25 @@ from robotics.sim import scene
 
 BALL_X = 0.043  # ball center height above the hand origin at rest on the palm
 CON_PER_WORLD = 64
-# wrist camera: aimed at the orbit center from the wrist side, optical axis 55 deg off the palm normal,
-# 15 cm away (~13 cm above the palm); fovy 42 deg = square center crop of the D435 color stream
-WRIST_ALPHA, WRIST_DIST, WRIST_FOVY = np.radians(55), 0.15, 42.0
 
 
-def wrist_cam(alpha=WRIST_ALPHA, dist=WRIST_DIST):
-    """Wrist camera position and axes (x right, y up, z back) in the hand frame."""
-    pos = E.CENTER + dist * np.array([np.cos(alpha), 0, -np.sin(alpha)])
-    fwd = (E.CENTER - pos) / dist
-    up = np.array([0, 0, 1.0]) - fwd * fwd[2]
-    up /= np.linalg.norm(up)
-    return pos, np.stack([np.cross(fwd, up), up, -fwd], 1)
+def wrist_cam():
+    """The calibrated real wrist camera (lab/ur5.xml, camera 'wrist' on hand_mount): position and axes (x right,
+    y up, z back) in the hand frame, fovy (deg) and resolution (w, h)."""
+    arm = mujoco.MjSpec.from_file(str(scene.MJ / "lab" / "ur5.xml"))
+    c, Rc = arm.camera("wrist"), np.zeros(9)
+    mujoco.mju_quat2Mat(Rc, c.quat)
+    return c.pos - arm.site("hand_attach").pos, Rc.reshape(3, 3), c.fovy, tuple(int(v) for v in c.resolution)
 
 
 # physics DR (per episode): scale ranges unless noted; log-uniform for damping/armature
-DR = dict(ball_mass=(0.7, 1.3), hand_fric=(0.5, 1.2), ball_fric=(0.5, 1.5), kp=(0.7, 1.3), damp=(0.5, 2.0),
+DR = dict(ball_mass=(0.9, 1.1), hand_fric=(0.5, 1.2), ball_fric=(0.5, 1.5), kp=(0.7, 1.3), damp=(0.5, 2.0),
           arm=(0.5, 2.0), floss=(0.0, 0.01), link_mass=(0.8, 1.2), solref=(0.01, 0.03), delay_p=(0.4, 0.4, 0.2))
-VIS = dict(cam_pos=0.015, cam_rot=np.radians(5), ball_gain=(0.75, 1.15), hand_gray=(0.1, 0.6), floor=(0.3, 1.2),
-           bright=0.1, contrast=(0.8, 1.2), wb=(0.9, 1.1), noise=0.03)
+VIS = dict(cam_pos=0.005, cam_rot=np.radians(3), ball_gain=(0.75, 1.15), ball_tint=(0.93, 1.07), hand_gray=(0.03, 0.25),
+           floor=(0.3, 1.2), light=np.radians(40), bright=0.1, contrast=(0.8, 1.2), wb=(0.93, 1.07), noise=0.03,
+           bg_real=0.7, bg_rot=np.radians(40), bg_zoom=(1.0, 1.6), bg_shift=0.25, bg_gain=(0.6, 1.3),
+           img_delay=(0.7, 0.3))  # image age at the policy: 1 or 2 control steps (real: 35-70 ms + inference)
+SS = 2  # wrist camera: render at SS x the policy resolution, composite the background, average down
 TH0 = -E.TILT[0]  # nominal palm tilt: 17 deg, fingers downhill
 
 
@@ -50,23 +53,27 @@ def gravity_dir(th, ph):
 
 
 def build_model_cam(sim_dt, cam="top"):
-    """E.build_model plus one camera: 'top' (matches the ray caster view, fingers up, thumb right) or 'wrist'."""
+    """E.build_model plus one camera: 'top' (matches the ray caster view, fingers up, thumb right) or 'wrist'.
+    -> model, R, o, image (w, h)."""
     m0, R, o = E.build_model(sim_dt)
     spec = B.ball_spec(*E.TILT, solref=(0.02, 1))
     scene.add_hand_self_pairs(spec)
-    q = np.zeros(4)
+    q, res = np.zeros(4), (BR.RES, BR.RES)
     if cam == "top":
         mujoco.mju_mat2Quat(q, np.stack([R[:, 1], R[:, 2], R[:, 0]], 1).ravel())  # cam x=right, y=up, z=back
         spec.worldbody.add_camera(name="top", pos=o + R @ BR.LOOK + BR.DIST * R[:, 0], quat=q, fovy=np.degrees(BR.FOV))
     else:
-        pos, Rc = wrist_cam()
+        pos, Rc, fovy, res = wrist_cam()
+        spec.geom("floor").group = 1  # not rendered: rays that miss (depth 0) are the background mask
         mujoco.mju_mat2Quat(q, (R @ Rc).ravel())
-        spec.worldbody.add_camera(name="wrist", pos=o + R @ pos, quat=q, fovy=WRIST_FOVY)
+        spec.worldbody.add_camera(name="wrist", pos=o + R @ pos, quat=q, fovy=fovy)
+        # fill light along the view direction: the lab's diffuse light leaves no dark side on the real balls
+        spec.worldbody.add_light(type=mujoco.mjtLightType.mjLIGHT_DIRECTIONAL, dir=-(R @ Rc)[:, 2])
     m = spec.compile()
     m.geom_contype[:], m.geom_conaffinity[:] = m0.geom_contype, m0.geom_conaffinity
     m.opt.timestep, m.opt.iterations, m.opt.ls_iterations, m.opt.cone = (m0.opt.timestep, m0.opt.iterations,
                                                                          m0.opt.ls_iterations, m0.opt.cone)
-    return m, R, o
+    return m, R, o, res
 
 
 class BaodingNoisyEnv(Env):
@@ -74,9 +81,10 @@ class BaodingNoisyEnv(Env):
                  ball_noise=0.002, ball_bias=0.001, q_noise=0.005, qd_noise=0.1, act_noise=0.05, delay_prob=0.5,
                  kick_prob=0.01, kick_std=0.1, periods=None, warp=False, nworld=None, w_over=0.0, cam="top",
                  tilt_max=None, g_obs=None, g_noise=0.03, dr=False, vis_dr=False,
-                 tilt_about="up"):
+                 tilt_about="up", bg=None, stack=2):
         self.warp, self.cmd = warp, periods is not None
-        self.mj_model, R, o = build_model_cam(sim_dt, cam) if warp else E.build_model(sim_dt)
+        self.mj_model, R, o, self.res = (build_model_cam(sim_dt, cam) if warp
+                                         else (*E.build_model(sim_dt), (BR.RES, BR.RES)))  # res = image (w, h)
         self.R, self.o = jnp.array(R), jnp.array(o)
         self.mjx_model = mjx.put_model(self.mj_model, impl="warp" if warp else "jax")
         self.n_frames = int(round(ctrl_dt / sim_dt))
@@ -91,7 +99,9 @@ class BaodingNoisyEnv(Env):
         self.g_obs = (tilt_max is not None) if g_obs is None else g_obs
         self.noise["g"] = g_noise
         self.g_world = jnp.array(self.mj_model.opt.gravity)
-        self.dr, self.vis_dr = dr, vis_dr
+        self.dr, self.vis_dr, self.stack = dr, vis_dr, stack
+        self.ss = SS if warp and cam == "wrist" else 1
+        self.bg = None if bg is None else jnp.array(np.load(bg))  # (N, SS*h, SS*w, 3) uint8
         if vis_dr:
             m = self.mj_model
             self.ball_vgeoms = np.array([g for g in range(m.ngeom) if m.body(m.geom_bodyid[g]).name.startswith("ball")])
@@ -109,9 +119,10 @@ class BaodingNoisyEnv(Env):
                        "actuator_gainprm", "actuator_biasprm", "dof_damping", "dof_armature", "dof_frictionloss")}
         self.scene = BR.make_scene(self.mj_model, R, o) if render and not warp else None
         if render and warp:  # keep self.rc alive: its device buffers are freed with it
-            self.rc = mjx.create_render_context(mjm=self.mj_model, nworld=nworld, cam_res=(BR.RES, BR.RES),
+            self.rc = mjx.create_render_context(mjm=self.mj_model, nworld=nworld,
+                                                cam_res=(self.ss * self.res[0], self.ss * self.res[1]),
                                                 use_textures=True, use_shadows=False, render_rgb=True,
-                                                render_depth=False, enabled_geom_groups=[0, 2])
+                                                render_depth=self.ss > 1, enabled_geom_groups=[0, 2])
             self.rcp = self.rc.pytree()
 
     @property
@@ -119,7 +130,7 @@ class BaodingNoisyEnv(Env):
         c = int(self.cmd) + 3 * int(self.g_obs)
         size = {"state": 84 + c, "vis_state": 66 + c, "privileged_state": 85 + c + 7 * int(self.dr)}
         if self.render:
-            size["pixels/view_0"] = (BR.RES, BR.RES, 6)
+            size["pixels/view_0"] = (self.res[1], self.res[0], 3 * self.stack)
         return size
 
     @property
@@ -141,17 +152,43 @@ class BaodingNoisyEnv(Env):
             K = jnp.cross(jnp.eye(3), rv / th)
             Rj = jnp.eye(3) + jnp.sin(th) * K + (1 - jnp.cos(th)) * K @ K
             data = data.replace(cam_xpos=data.cam_xpos + self.R @ v["cam_dp"], cam_xmat=data.cam_xmat @ Rj)
+            data = data.tree_replace({"_impl.light_xdir": data._impl.light_xdir @ v["light"].T})
             rgba = self.rgba0.at[self.ball_vgeoms, :3].multiply(v["ball_gain"])
             rgba = rgba.at[self.hand_vgeoms, :3].set(jnp.clip(v["hand_rgb"], 0, 1))
-            m = m.tree_replace({"geom_rgba": jnp.clip(rgba, 0, 1),
+            m = m.tree_replace({"geom_rgba": rgba,
                                 "mat_rgba": self.mat_rgba0.at[0, :3].multiply(v["floor"])})
         d = mjx.refit_bvh(m, data, self.rcp)
-        rgb, _ = mjx.render(m, d, self.rcp)
+        rgb, depth = mjx.render(m, d, self.rcp)
         x = mjx.get_rgb(self.rcp, 0, rgb)
+        if self.ss > 1:
+            if self.vis_dr and self.bg is not None:
+                x = jnp.where(mjx.get_depth(self.rcp, 0, depth, 1.0) > 0, x, self._bg(v["bg_key"]))
+            x = x.reshape(self.res[1], self.ss, self.res[0], self.ss, 3).mean((1, 3))
         if self.vis_dr:  # photometric: contrast about the image mean, brightness, white balance, pixel noise
             x = (x - x.mean()) * v["contrast"] + x.mean() + v["bright"]
             x = x * v["wb"] + v["noise"] * jax.random.normal(rng, x.shape)
         return jnp.round(255 * jnp.clip(x, 0, 1)).astype(jnp.uint8)
+
+    def _bg(self, key):
+        """Per-episode background at render resolution: a real lab frame (random rotation / zoom / shift / flip,
+        mirrored at the borders) or smooth random colors, times a random gain."""
+        h, w = self.ss * self.res[1], self.ss * self.res[0]
+        k = jax.random.split(key, 9)
+        u = lambda key, lo, hi, shape=(): jax.random.uniform(key, shape, minval=lo, maxval=hi)
+        yy, xx = jnp.meshgrid(jnp.arange(h) - (h - 1) / 2, jnp.arange(w) - (w - 1) / 2, indexing="ij")
+        rot, zoom = u(k[0], -VIS["bg_rot"], VIS["bg_rot"]), u(k[1], *VIS["bg_zoom"])
+        flip = jnp.where(jax.random.uniform(k[2]) < 0.5, -1.0, 1.0)
+        dx, dy = u(k[3], -VIS["bg_shift"], VIS["bg_shift"], (2,)) * jnp.array([w, h])
+        c, s = jnp.cos(rot), jnp.sin(rot)
+        xs, ys = flip * (c * xx - s * yy) / zoom + (w - 1) / 2 + dx, (s * xx + c * yy) / zoom + (h - 1) / 2 + dy
+        img = self.bg[jax.random.randint(k[4], (), 0, self.bg.shape[0])].astype(jnp.float32) / 255
+        real = jnp.stack([map_coordinates(img[..., i], [ys, xs], 1, mode="mirror") for i in range(3)], -1)
+        coarse = jax.image.resize(jax.random.uniform(k[5], (3, 4, 3)), (h, w, 3), "cubic")
+        fine = jax.image.resize(jax.random.uniform(k[6], (12, 16, 3)), (h, w, 3), "linear")
+        smooth = coarse + u(k[7], 0.0, 0.6) * (fine - 0.5)
+        smooth = smooth.mean(-1, keepdims=True) + u(jax.random.fold_in(key, 2), 0.0, 1.0) * (smooth - smooth.mean(-1, keepdims=True))
+        return jnp.clip(jnp.where(jax.random.uniform(k[8]) < VIS["bg_real"], real, smooth)
+                        * u(jax.random.fold_in(key, 1), *VIS["bg_gain"]), 0, 1)
 
     def _init(self, rng):
         """Random start: hand pose noise, balls on the orbit at a random phase; targets start aligned."""
@@ -180,7 +217,8 @@ class BaodingNoisyEnv(Env):
                 "omega": omega if self.cmd else jnp.asarray(self.omega, jnp.float32),
                 "bias": self.noise["bias"] * jax.random.normal(r4, (2, 3)),
                 "delay": (jax.random.uniform(jax.random.fold_in(r4, 1)) < self.noise["delay"]).astype(jnp.float32),
-                "abuf": jnp.zeros((2, 20)), "hist": jnp.zeros((2, 2, 3)), "frame": jnp.zeros((BR.RES, BR.RES, 3), jnp.uint8)}
+                "abuf": jnp.zeros((2, 20)), "hist": jnp.zeros((2, 2, 3)),
+                "frames": jnp.zeros((self.stack + 1, self.res[1], self.res[0], 3), jnp.uint8)}  # previous images
         if self.dr:
             info.update(self._sample_dr(r8))
         if self.vis_dr:
@@ -188,13 +226,19 @@ class BaodingNoisyEnv(Env):
         return qpos, info
 
     def _sample_vis(self, rng):
-        k = jax.random.split(rng, 10)
+        k = jax.random.split(rng, 16)
         u = lambda key, lo_hi, shape=(): jax.random.uniform(key, shape, minval=lo_hi[0], maxval=lo_hi[1])
         ax = jax.random.normal(k[1], (3,))
-        return {"cam_dp": u(k[0], (-VIS["cam_pos"], VIS["cam_pos"]), (3,)),
+        lv = jax.random.normal(k[10], (3,))
+        lv = lv / jnp.linalg.norm(lv) * u(k[11], (0.0, VIS["light"]))  # light directions: one random rotation
+        th = jnp.linalg.norm(lv) + 1e-9
+        K = jnp.cross(jnp.eye(3), lv / th)
+        return {"light": jnp.eye(3) + jnp.sin(th) * K + (1 - jnp.cos(th)) * K @ K, "bg_key": k[12],
+                "img_delay": 1 + jax.random.choice(k[13], 2, p=jnp.array(VIS["img_delay"])),
+                "cam_dp": u(k[0], (-VIS["cam_pos"], VIS["cam_pos"]), (3,)),
                 "cam_rot": ax / jnp.linalg.norm(ax) * u(k[2], (0.0, VIS["cam_rot"])),
-                "ball_gain": u(k[3], VIS["ball_gain"], (2, 3)),
-                "hand_rgb": u(k[4], VIS["hand_gray"]) + u(k[5], (-0.05, 0.05), (3,)),
+                "ball_gain": u(k[3], VIS["ball_gain"], (2, 1)) * u(k[14], VIS["ball_tint"], (2, 3)),
+                "hand_rgb": u(k[4], VIS["hand_gray"]) + u(k[5], (-0.02, 0.02), (3,)),
                 "floor": u(k[6], VIS["floor"], (3,)), "bright": u(k[7], (-VIS["bright"], VIS["bright"])),
                 "contrast": u(k[8], VIS["contrast"]), "wb": u(k[9], VIS["wb"], (3,)),
                 "noise": u(jax.random.fold_in(rng, 1), (0.0, VIS["noise"]))}
@@ -258,9 +302,10 @@ class BaodingNoisyEnv(Env):
         info = {**info, "hist": jnp.stack([meas, hist[0]])}
         if self.render:
             img = self._img(data, info, k4)
-            prev = jnp.where(first, img, info["frame"])
-            obs["pixels/view_0"] = jnp.concatenate([img, prev], -1)
-            info = {**info, "frame": img}
+            buf = jnp.concatenate([img[None], jnp.where(first, img, info["frames"])])  # newest first
+            d = info["vis"]["img_delay"] if self.vis_dr and self.ss > 1 else 0
+            obs["pixels/view_0"] = jnp.concatenate(list(jax.lax.dynamic_slice_in_dim(buf, d, self.stack)), -1)
+            info = {**info, "frames": buf[:-1]}
         return obs, info
 
     def reset(self, rng):
