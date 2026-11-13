@@ -177,6 +177,7 @@ if __name__ == "__main__":
     p.add_argument("--bg", help="--vis_dr background library (.npy from baoding_real --bg)")
     p.add_argument("--stack", type=int, default=2, help="stacked frames of the student")
     p.add_argument("--pert", nargs="+", default=[], help="extra perturbations, key=value (PERT in baoding_noisy_env)")
+    p.add_argument("--rel", action="store_true", help="policies trained with --rel (no orbit tracking, wide start)")
     p.add_argument("--random", action="store_true")
     p.add_argument("--seeds", type=int, default=2, help="--random: batches of --episodes")
     p.add_argument("--tilt_grid", action="store_true")
@@ -191,7 +192,7 @@ if __name__ == "__main__":
         v2["dr"] = True
     if a.vis_dr:
         v2.update(vis_dr=True, bg=a.bg)
-    v2["stack"] = a.stack
+    v2["stack"], v2["rel"] = a.stack, a.rel
     v2["pert"] = {k: float(v) for k, v in (x.split("=") for x in a.pert)}
     if a.tilt is not None:
         v2.update(tilt_max=np.radians(a.tilt), g_obs=not a.no_g_obs, tilt_about=a.tilt_about)

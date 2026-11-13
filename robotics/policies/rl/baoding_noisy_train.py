@@ -66,6 +66,8 @@ if __name__ == "__main__":
     p.add_argument("--envs", type=int, help="default 2048 (state) / 1024 (vision)")
     p.add_argument("--evals", type=int, default=25)
     p.add_argument("--out", help="default out/rl/baoding_{noisy,cmd}/{teacher,vision_rl}")
+    p.add_argument("--rel", action="store_true", help="no orbit tracking: pair-rotation reward, wide start")
+    p.add_argument("--pert", nargs="+", default=[], help="extra perturbations, key=value (PERT in baoding_noisy_env)")
     p.add_argument("--restore", help="params .pkl to warm-start from")
     a = p.parse_args()
     out = a.out or str(output_path(f"rl/baoding_{'cmd' if a.periods else 'noisy'}/" + ("vision_rl" if a.vision else "teacher")))
@@ -96,7 +98,8 @@ if __name__ == "__main__":
     if a.dr and restore is not None and restore[2]["params"]["hidden_0"]["kernel"].shape[0] == 85 + (a.periods is not None) + 3 * (tilt is not None):
         restore = pad_critic(restore, 7, (a.periods is not None) + 3 * (tilt is not None))
     env = lambda n: BaodingNoisyEnv(a.period, a.w_turn, render=a.vision, periods=a.periods, warp=a.warp, nworld=n,
-                                    w_over=a.w_over, cam=a.cam, tilt_max=tilt, dr=a.dr, tilt_about=a.tilt_about)
+                                    w_over=a.w_over, cam=a.cam, tilt_max=tilt, dr=a.dr, tilt_about=a.tilt_about, rel=a.rel,
+                                    pert={k: float(v) for k, v in (x.split("=") for x in a.pert)})
     ppo.train(
         environment=env(kw["num_envs"]), eval_env=env(kw["num_eval_envs"]), num_timesteps=a.steps, num_evals=a.evals, episode_length=400,
         num_updates_per_batch=4, discounting=0.99, learning_rate=3e-4, entropy_cost=1e-2, reward_scaling=0.1,

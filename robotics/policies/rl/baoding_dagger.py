@@ -85,6 +85,8 @@ if __name__ == "__main__":
     p.add_argument("--bg", help="--vis_dr background library (.npy from baoding_real --bg)")
     p.add_argument("--stack", type=int, default=2, help="stacked frames")
     p.add_argument("--enc", default="flat", choices=["flat", "ssm"], help="flatten CNN or spatial-softmax keypoints")
+    p.add_argument("--rel", action="store_true", help="teacher trained with --rel")
+    p.add_argument("--pert", nargs="+", default=[], help="extra perturbations, key=value (PERT in baoding_noisy_env)")
     p.add_argument("--out")
     a = p.parse_args()
     a.out = a.out or str(output_path(f"rl/baoding_{'cmd' if a.periods else 'noisy'}/dagger"))
@@ -93,7 +95,8 @@ if __name__ == "__main__":
 
     env = BaodingNoisyEnv(render=True, periods=a.periods, warp=a.warp, nworld=a.envs, cam=a.cam,
                           tilt_max=None if a.tilt is None else np.radians(a.tilt), dr=a.dr,
-                          tilt_about=a.tilt_about, vis_dr=a.vis_dr, bg=a.bg, stack=a.stack)
+                          tilt_about=a.tilt_about, vis_dr=a.vis_dr, bg=a.bg, stack=a.stack, rel=a.rel,
+                          pert={k: float(v) for k, v in (x.split("=") for x in a.pert)})
     nv = env.observation_size["vis_state"]
     reset, step = jax.jit(jax.vmap(env.reset)), jax.jit(jax.vmap(env.step))
     teacher = load_policy(a.teacher, False, env)
