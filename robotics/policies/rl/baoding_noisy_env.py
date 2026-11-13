@@ -55,10 +55,10 @@ PERT = dict(
     push_p=0.02, push_n=6,
     g_jit=0.0,       # in-episode wander of the gravity direction (std, ~1 s correlation); needs tilt
     q_bias=0.0,      # per-episode joint zero offset (std): shifts the observed q and ctrl
-    prop_delay=0,    # 1: observed q / qd are one control step old
+    prop_delay=0.0,  # per-episode prob. that the observed q / qd are one control step old
     delay_jit=0.0,   # per-step prob. that the action delay is re-drawn from 0/1/2 for that step
     init_ball=0.002, init_phase=0.0,  # start: ball position noise (std, m), target phase offset (std)
-    backlash=0.0,    # total play between commanded and effective position target
+    backlash=0.0,    # play between commanded and effective position target: per episode uniform in [0, backlash]
     rate=None,       # joint target rate limit (rad/s)
     # model-level (same for all episodes)
     tors=1.0,        # torsional friction scale (all geoms)
@@ -266,6 +266,8 @@ class BaodingNoisyEnv(Env):
                 "delay": (jax.random.uniform(jax.random.fold_in(r4, 1)) < self.noise["delay"]).astype(jnp.float32),
                 "abuf": jnp.zeros((2, 20)), "hist": jnp.zeros((2, 2, 3)),
                 "ctrl": hand_q, "prop": jnp.zeros(40), "q_bias": P["q_bias"] * jax.random.normal(jax.random.fold_in(r1, 1), (20,)),
+                "pd": jax.random.uniform(jax.random.fold_in(r1, 2)) < P["prop_delay"],
+                "bl": P["backlash"] * jax.random.uniform(jax.random.fold_in(r1, 3)),
                 "push_f": jnp.zeros((self.mj_model.nbody, 3)), "push_t": jnp.zeros(()), "g_ou": jnp.zeros(3),
                 "frames": jnp.zeros((self.stack + 1, self.res[1], self.res[0], 3), jnp.uint8)}  # previous images
         if self.dr:
@@ -329,7 +331,7 @@ class BaodingNoisyEnv(Env):
         meas = b + info["bias"] + self.noise["ball"] * jax.random.normal(k1, (2, 3))
         hist = jnp.where(first, jnp.stack([meas, meas]), info["hist"])
         cur = jnp.concatenate([data.qpos[:20], data.qvel[:20]])
-        old = jnp.where(first, cur, info["prop"]) if self.pert["prop_delay"] else cur
+        old = jnp.where(info["pd"] & ~first, info["prop"], cur)
         q = old[:20] + info["q_bias"] + self.noise["q"] * jax.random.normal(k2, (20,))
         qd = old[20:] + self.noise["qd"] * jax.random.normal(k3, (20,))
         th = info["theta"]
@@ -395,7 +397,7 @@ class BaodingNoisyEnv(Env):
             dq = jnp.clip(dq, -P["rate"] * self.ctrl_dt, P["rate"] * self.ctrl_dt)
         cmd = jnp.clip(info["ctrl"] + dq, self.lo, self.hi)  # commanded target (observed)
         # backlash: the effective target only moves once the command leaves the play around it
-        ctrl = jnp.clip(data.ctrl, cmd - P["backlash"] / 2, cmd + P["backlash"] / 2) if P["backlash"] > 0 else cmd
+        ctrl = jnp.clip(data.ctrl, cmd - info["bl"] / 2, cmd + info["bl"] / 2) if P["backlash"] > 0 else cmd
         # random in-plane kick on one ball
         kk = jax.random.split(k_kick, 3)
         kick = (jax.random.uniform(kk[0]) < n["kick_p"]) * n["kick"] * jax.random.normal(kk[1], (2,))
