@@ -9,7 +9,8 @@ dr=True: per-episode physics randomization (DR ranges below; model fields overri
 vis_dr=True (warp render): per-episode camera-mount jitter, ball/hand/floor colors, light direction, image
 brightness / contrast / white balance / pixel noise; wrist camera also: background composite (bg = real-frame
 library from baoding_real --bg, mixed with smooth random colors) and a 1-2 step image delay.
-stack = number of stacked frames in 'pixels/view_0' (newest first)."""
+stack = number of stacked frames in 'pixels/view_0' (newest first).
+pert = overrides of PERT (extra perturbations, all off by default; used for sensitivity evals)."""
 import jax
 import jax.numpy as jnp
 import mujoco
@@ -42,6 +43,25 @@ VIS = dict(cam_pos=0.005, cam_rot=np.radians(3), ball_gain=(0.75, 1.15), ball_ti
            floor=(0.3, 1.2), light=np.radians(40), bright=0.1, contrast=(0.8, 1.2), wb=(0.93, 1.07), noise=0.03,
            bg_real=0.7, bg_rot=np.radians(40), bg_zoom=(1.0, 1.6), bg_shift=0.25, bg_gain=(0.6, 1.3),
            img_delay=(0.7, 0.3))  # image age at the policy: 1 or 2 control steps (real: 35-70 ms + inference)
+# extra perturbations (off by default). Forces in ball weights (m g) / N, angles in rad.
+PERT = dict(
+    f_ball=0.0,      # white 3D force on each ball, new every control step (std, ball weights)
+    push=0.0,        # sustained 3D push on one ball (std, ball weights); starts with prob push_p, lasts push_n steps
+    f_link=0.0,      # sustained 3D push on one finger link (std, N), same timing as push
+    spin=0.0,        # angular-velocity kick on one ball at each push start (std, rad/s)
+    push_p=0.02, push_n=6,
+    g_jit=0.0,       # in-episode wander of the gravity direction (std, ~1 s correlation); needs tilt
+    q_bias=0.0,      # per-episode joint zero offset (std): shifts the observed q and ctrl
+    prop_delay=0,    # 1: observed q / qd are one control step old
+    delay_jit=0.0,   # per-step prob. that the action delay is re-drawn from 0/1/2 for that step
+    init_ball=0.002, init_phase=0.0,  # start: ball position noise (std, m), target phase offset (std)
+    backlash=0.0,    # total play between commanded and effective position target
+    rate=None,       # joint target rate limit (rad/s)
+    # model-level (same for all episodes)
+    tors=1.0,        # torsional friction scale (all geoms)
+    roll=None,       # rolling friction coefficient (m): contacts become condim 6
+    ball_r=1.0, ball_I=1.0, frc=1.0,  # ball radius / ball inertia / actuator force limit scales
+    palm_fric=1.0, finger_fric=1.0)   # sliding friction scales by hand part
 SS = 2  # wrist camera: render at SS x the policy resolution, composite the background, average down
 TH0 = -E.TILT[0]  # nominal palm tilt: 17 deg, fingers downhill
 
@@ -81,10 +101,32 @@ class BaodingNoisyEnv(Env):
                  ball_noise=0.002, ball_bias=0.001, q_noise=0.005, qd_noise=0.1, act_noise=0.05, delay_prob=0.5,
                  kick_prob=0.01, kick_std=0.1, periods=None, warp=False, nworld=None, w_over=0.0, cam="top",
                  tilt_max=None, g_obs=None, g_noise=0.03, dr=False, vis_dr=False,
-                 tilt_about="up", bg=None, stack=2):
+                 tilt_about="up", bg=None, stack=2, pert=None):
         self.warp, self.cmd = warp, periods is not None
         self.mj_model, R, o, self.res = (build_model_cam(sim_dt, cam) if warp
                                          else (*E.build_model(sim_dt), (BR.RES, BR.RES)))  # res = image (w, h)
+        assert not set(pert or {}) - set(PERT), set(pert) - set(PERT)
+        self.pert = P = {**PERT, **(pert or {})}
+        m = self.mj_model
+        names = [m.body(m.geom_bodyid[g]).name for g in range(m.ngeom)]
+        col = (m.geom_contype > 0) | (m.geom_conaffinity > 0)
+        self.ball_geoms = np.array([g for g in range(m.ngeom) if names[g].startswith("ball")])
+        self.hand_geoms = np.array([g for g in range(m.ngeom) if col[g] and not names[g].startswith(("ball", "world"))])
+        self.ball_bodies = np.array([m.body("ball0").id, m.body("ball1").id])
+        self.link_bodies = np.array([b for b in range(m.nbody) if m.body(b).name.startswith("finger")])
+        finger = np.array([names[g].startswith("finger") for g in self.hand_geoms])
+        m.geom_friction[self.hand_geoms[finger], 0] *= P["finger_fric"]
+        m.geom_friction[self.hand_geoms[~finger], 0] *= P["palm_fric"]
+        m.geom_friction[:, 1] *= P["tors"]
+        if P["roll"] is not None:  # the contact uses the larger coefficient of the two geoms: set all
+            m.geom_condim[np.concatenate([self.ball_geoms, self.hand_geoms])] = 6
+            m.geom_friction[:, 2] = P["roll"]
+        m.geom_size[self.ball_geoms, 0] *= P["ball_r"]
+        m.geom_rbound[self.ball_geoms] *= P["ball_r"]
+        m.geom_aabb[self.ball_geoms, 3:] *= P["ball_r"]
+        m.body_inertia[self.ball_bodies] *= P["ball_I"]
+        m.actuator_forcerange[:] *= P["frc"]
+        self.xf = any(P[k] > 0 for k in ("f_ball", "push", "f_link"))
         self.R, self.o = jnp.array(R), jnp.array(o)
         self.mjx_model = mjx.put_model(self.mj_model, impl="warp" if warp else "jax")
         self.n_frames = int(round(ctrl_dt / sim_dt))
@@ -108,13 +150,6 @@ class BaodingNoisyEnv(Env):
             self.hand_vgeoms = np.array([g for g in range(m.ngeom) if m.geom_group[g] == 2])
             self.rgba0, self.mat_rgba0 = jnp.array(m.geom_rgba), jnp.array(m.mat_rgba)
         if dr:
-            m = self.mj_model
-            names = [m.body(m.geom_bodyid[g]).name for g in range(m.ngeom)]
-            col = (m.geom_contype > 0) | (m.geom_conaffinity > 0)
-            self.ball_geoms = np.array([g for g in range(m.ngeom) if names[g].startswith("ball")])
-            self.hand_geoms = np.array([g for g in range(m.ngeom) if col[g] and not names[g].startswith(("ball", "world"))])
-            self.ball_bodies = np.array([m.body("ball0").id, m.body("ball1").id])
-            self.link_bodies = np.array([b for b in range(m.nbody) if m.body(b).name.startswith("finger")])
             self.m0 = {k: jnp.array(getattr(m, k)) for k in ("geom_friction", "geom_solref", "body_mass", "body_inertia",
                        "actuator_gainprm", "actuator_biasprm", "dof_damping", "dof_armature", "dof_frictionloss")}
         self.scene = BR.make_scene(self.mj_model, R, o) if render and not warp else None
@@ -195,7 +230,8 @@ class BaodingNoisyEnv(Env):
         r1, r2, r3, r4, r5, r6, r7, r8 = jax.random.split(rng, 8)
         hand_q = jnp.clip(E.DEFAULT_POSE + 0.05 * jax.random.normal(r1, (20,)), self.lo, self.hi)
         phi = jax.random.uniform(r2, (), maxval=2 * jnp.pi)
-        yz = E.targets(phi) + 0.002 * jax.random.normal(r3, (2, 2))
+        P = self.pert
+        yz = E.targets(phi) + P["init_ball"] * jax.random.normal(r3, (2, 2))
         p = jnp.concatenate([jnp.full((2, 1), BALL_X), yz], 1) @ self.R.T + self.o
         qpos = jnp.concatenate([hand_q, self.q_ball.at[0:3].set(p[0]).at[7:10].set(p[1])])
         b = E.balls_hand(qpos, self.R, self.o)
@@ -213,11 +249,14 @@ class BaodingNoisyEnv(Env):
             c, s_ = np.cos(TH0), np.sin(TH0)
             g = jnp.array([[c, 0, s_], [0, 1, 0], [-s_, 0, c]]) @ g
         g_meas = g + self.noise["g"] * jax.random.normal(k3, (3,))  # per-episode FK / mount calibration error
-        info = {"rng": r5, "g": g, "g_meas": g_meas / jnp.linalg.norm(g_meas), "theta": phi, "pair": E.pair_angle(b), "turn": jnp.zeros(()),
+        info = {"rng": r5, "g": g, "g_meas": g_meas / jnp.linalg.norm(g_meas),
+                "theta": phi + P["init_phase"] * jax.random.normal(jax.random.fold_in(r2, 1)), "pair": E.pair_angle(b), "turn": jnp.zeros(()),
                 "omega": omega if self.cmd else jnp.asarray(self.omega, jnp.float32),
                 "bias": self.noise["bias"] * jax.random.normal(r4, (2, 3)),
                 "delay": (jax.random.uniform(jax.random.fold_in(r4, 1)) < self.noise["delay"]).astype(jnp.float32),
                 "abuf": jnp.zeros((2, 20)), "hist": jnp.zeros((2, 2, 3)),
+                "ctrl": hand_q, "prop": jnp.zeros(40), "q_bias": P["q_bias"] * jax.random.normal(jax.random.fold_in(r1, 1), (20,)),
+                "push_f": jnp.zeros((self.mj_model.nbody, 3)), "push_t": jnp.zeros(()), "g_ou": jnp.zeros(3),
                 "frames": jnp.zeros((self.stack + 1, self.res[1], self.res[0], 3), jnp.uint8)}  # previous images
         if self.dr:
             info.update(self._sample_dr(r8))
@@ -279,8 +318,10 @@ class BaodingNoisyEnv(Env):
         b = E.balls_hand(data.qpos, self.R, self.o)
         meas = b + info["bias"] + self.noise["ball"] * jax.random.normal(k1, (2, 3))
         hist = jnp.where(first, jnp.stack([meas, meas]), info["hist"])
-        q = data.qpos[:20] + self.noise["q"] * jax.random.normal(k2, (20,))
-        qd = data.qvel[:20] + self.noise["qd"] * jax.random.normal(k3, (20,))
+        cur = jnp.concatenate([data.qpos[:20], data.qvel[:20]])
+        old = jnp.where(first, cur, info["prop"]) if self.pert["prop_delay"] else cur
+        q = old[:20] + info["q_bias"] + self.noise["q"] * jax.random.normal(k2, (20,))
+        qd = old[20:] + self.noise["qd"] * jax.random.normal(k3, (20,))
         th = info["theta"]
         goal = jnp.concatenate([10 * (E.targets(th) - E.CENTER[1:]).ravel(), jnp.array([jnp.sin(th), jnp.cos(th)])])
         cmd = (info["omega"] / jnp.pi)[None] if self.cmd else jnp.zeros(0)  # T=2 s -> 1.0
@@ -288,18 +329,18 @@ class BaodingNoisyEnv(Env):
             cmd, cmd_a = jnp.concatenate([info["g"], cmd]), jnp.concatenate([info["g_meas"], cmd])
         else:
             cmd_a = cmd
-        prop = jnp.concatenate([q, 0.1 * qd, data.ctrl])
+        prop = jnp.concatenate([q, 0.1 * qd, info["ctrl"] + info["q_bias"]])
         balls = 10 * (jnp.concatenate([meas[None], hist]) - E.CENTER).ravel()
         if self.dr:  # DR summary for the critic (~unit scale)
             d = info["dr"]
             drv = jnp.concatenate([d["ball_mass"] - 1, jnp.stack([d["hand_fric"] - 1, d["ball_fric"] - 1, d["kp"].mean() - 1,
                                    jnp.log(d["damp"]).mean(), 50 * (d["solref"] - 0.02)])])
             cmd = jnp.concatenate([drv, cmd])
-        priv = jnp.concatenate([E.observe(data.qpos, data.qvel, data.ctrl, th, self.R, self.o),
+        priv = jnp.concatenate([E.observe(data.qpos, data.qvel, info["ctrl"], th, self.R, self.o),
                                 info["delay"][None], 1000 * info["bias"].ravel(), cmd])
         obs = {"state": jnp.concatenate([prop, balls, goal, cmd_a]), "vis_state": jnp.concatenate([prop, goal, cmd_a]),
                "privileged_state": priv}
-        info = {**info, "hist": jnp.stack([meas, hist[0]])}
+        info = {**info, "hist": jnp.stack([meas, hist[0]]), "prop": cur}
         if self.render:
             img = self._img(data, info, k4)
             buf = jnp.concatenate([img[None], jnp.where(first, img, info["frames"])])  # newest first
@@ -331,21 +372,43 @@ class BaodingNoisyEnv(Env):
         else:
             fresh = jnp.array(False)
         rng, k_act, k_kick, k_obs = jax.random.split(info["rng"], 4)
-        n = self.noise
+        n, P = self.noise, self.pert
+        kp = jax.random.split(jax.random.fold_in(info["rng"], 1), 10)
         act = action + n["act"] * jax.random.normal(k_act, (20,))
         ab = info["abuf"]
-        used = jnp.where(info["delay"] > 1.5, ab[1], jnp.where(info["delay"] > 0.5, ab[0], act))
-        ctrl = jnp.clip(data.ctrl + self.action_scale * used, self.lo, self.hi)
+        delay = jnp.where(jax.random.uniform(kp[0]) < P["delay_jit"], jax.random.randint(kp[1], (), 0, 3), info["delay"])
+        used = jnp.where(delay > 1.5, ab[1], jnp.where(delay > 0.5, ab[0], act))
+        dq = self.action_scale * used
+        if P["rate"] is not None:
+            dq = jnp.clip(dq, -P["rate"] * self.ctrl_dt, P["rate"] * self.ctrl_dt)
+        cmd = jnp.clip(info["ctrl"] + dq, self.lo, self.hi)  # commanded target (observed)
+        # backlash: the effective target only moves once the command leaves the play around it
+        ctrl = jnp.clip(data.ctrl, cmd - P["backlash"] / 2, cmd + P["backlash"] / 2) if P["backlash"] > 0 else cmd
         # random in-plane kick on one ball
         kk = jax.random.split(k_kick, 3)
         kick = (jax.random.uniform(kk[0]) < n["kick_p"]) * n["kick"] * jax.random.normal(kk[1], (2,))
         v = jnp.concatenate([jnp.zeros(1), kick]) @ self.R.T
         adr = jnp.where(jax.random.uniform(kk[2]) < 0.5, 20, 26)
         qvel = data.qvel + jnp.zeros_like(data.qvel).at[adr + jnp.arange(3)].set(v)
-        data = data.replace(ctrl=ctrl, qvel=qvel)
         mdl = self._model(info["dr"]) if self.dr else self.mjx_model
+        # pushes: at a start, one ball and one finger link get a new force held for push_n steps (+ a ball spin kick)
+        start = (jax.random.uniform(kp[2]) < P["push_p"]) & (info["push_t"] <= 0)
+        w_ball = 9.81 * mdl.body_mass[self.ball_bodies]
+        ib = jax.random.randint(kp[3], (), 0, 2)
+        new = jnp.zeros_like(info["push_f"]).at[jnp.array(self.ball_bodies)[ib]].set(
+            P["push"] * w_ball[ib] * jax.random.normal(kp[4], (3,)))
+        new = new.at[jnp.array(self.link_bodies)[jax.random.randint(kp[5], (), 0, len(self.link_bodies))]].set(
+            P["f_link"] * jax.random.normal(kp[6], (3,)))
+        push_f, push_t = jnp.where(start, new, info["push_f"]), jnp.where(start, P["push_n"], info["push_t"] - 1)
+        qvel = qvel.at[23 + 6 * ib + jnp.arange(3)].add(start * P["spin"] * jax.random.normal(kp[7], (3,)))
+        data = data.replace(ctrl=ctrl, qvel=qvel)
+        g_ou = 0.95 * info["g_ou"] + 0.31 * P["g_jit"] * jax.random.normal(kp[8], (3,))
+        f = (push_t > 0) * push_f
+        f = f.at[self.ball_bodies].add(P["f_ball"] * w_ball[:, None] * jax.random.normal(kp[9], (2, 3)))
         if self.tilt_max is not None:  # rotated gravity = per-body force at the CoM (hand base is welded)
-            f = mdl.body_mass[:, None] * (9.81 * self.R @ info["g"] - self.g_world)
+            g = info["g"] + g_ou
+            f = f + mdl.body_mass[:, None] * (9.81 * self.R @ (g / jnp.linalg.norm(g)) - self.g_world)
+        if self.tilt_max is not None or self.xf:
             data = data.replace(xfrc_applied=jnp.concatenate([f, jnp.zeros_like(f)], 1))
         data = jax.lax.fori_loop(0, self.n_frames, lambda _, d: mjx.step(mdl, d), data)
 
@@ -362,7 +425,7 @@ class BaodingNoisyEnv(Env):
                   - 0.001 * jnp.sum(action ** 2) - 50.0 * dropped)
 
         info = {**info, "rng": rng, "theta": theta, "pair": pair, "turn": info["turn"] + dpair,
-                "abuf": jnp.stack([act, ab[0]])}
+                "abuf": jnp.stack([act, ab[0]]), "ctrl": cmd, "push_f": push_f, "push_t": push_t, "g_ou": g_ou}
         obs, info = self._obs(data, info, k_obs, fresh)
         metrics = {**state.metrics, "track_err": err.mean(), "turn": dpair, "dropped": dropped.astype(jnp.float32),
                    "pace": dpair / cap}

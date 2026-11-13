@@ -3,6 +3,7 @@
 --cmd (v2 speed-command policies, MuJoCo Warp): speed grid, mid-episode command switch, sweep video.
 --tilt_grid: pace / drop over palm tilt x azimuth at the --grid periods (env needs --tilt for the tilt physics).
 --random: episodes sampled like training (speed, tilt, DR, visuals); pace vs each episode's own command.
+--pert key=value ...: extra perturbations on top (sensitivity).
 Example: python -m robotics.policies.rl.baoding_noisy_eval --teacher ... --vision_rl ... --student ... --video"""
 from platforms.paths import output_path
 import argparse
@@ -175,6 +176,7 @@ if __name__ == "__main__":
     p.add_argument("--vis_dr", action="store_true", help="visual randomization in the eval env")
     p.add_argument("--bg", help="--vis_dr background library (.npy from baoding_real --bg)")
     p.add_argument("--stack", type=int, default=2, help="stacked frames of the student")
+    p.add_argument("--pert", nargs="+", default=[], help="extra perturbations, key=value (PERT in baoding_noisy_env)")
     p.add_argument("--random", action="store_true")
     p.add_argument("--seeds", type=int, default=2, help="--random: batches of --episodes")
     p.add_argument("--tilt_grid", action="store_true")
@@ -190,6 +192,7 @@ if __name__ == "__main__":
     if a.vis_dr:
         v2.update(vis_dr=True, bg=a.bg)
     v2["stack"] = a.stack
+    v2["pert"] = {k: float(v) for k, v in (x.split("=") for x in a.pert)}
     if a.tilt is not None:
         v2.update(tilt_max=np.radians(a.tilt), g_obs=not a.no_g_obs, tilt_about=a.tilt_about)
     env = BaodingNoisyEnv(render=True, **(off if a.clean else {}), **v2)

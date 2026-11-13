@@ -70,10 +70,9 @@ def viz(calib, out, n=24):
 
 
 def check(calib, student, out):
-    """Open loop on the real labelled ball frames (white = ball0, yellow = ball1): the student's ball-position heads
-    (with proprio, and 'image only'),
-    projected into the 88x64 image, vs the clicked ball center (px). Proprio = sim default pose or the real joints
-    (the real frames have a nearly open hand, outside the training poses). Baseline: both balls at the orbit center."""
+    """Open loop on the real labelled ball frames (white = ball0, yellow = ball1): the student's image-only
+    ball-position head, projected into the 88x64 image, vs the clicked ball center (px).
+    Baseline: both balls at the orbit center."""
     import pickle
     import jax.numpy as jnp
     from robotics.policies.rl import baoding_env as E
@@ -83,7 +82,6 @@ def check(calib, student, out):
     K, dist, T = np.array(c["K"]), np.array(c["dist"]), np.array(c["T_hand_cam"])
     d = pickle.load(open(student, "rb"))
     enc = d.get("enc", "flat")
-    frames = {f["file"]: f for f in json.load(open(f"{calib}/balls/frames.json"))["frames"]}
     circles = json.load(open(f"{calib}/balls/circles.json"))
     goal = np.concatenate([10 * (np.asarray(E.targets(0.0)) - E.CENTER[1:]).ravel(), [0.0, 1.0]])
     px = lambda uv: 32 * cv2.undistortPoints(np.float64([[uv]]), K, dist).ravel() + np.array([43.5, 31.5])
@@ -91,19 +89,17 @@ def check(calib, student, out):
     true = np.array([[px(cs[k][:2]) if k in cs else [np.nan] * 2 for k in ("white", "yellow")] for cs in circles.values()])
     imgs = [undistort(cv2.imread(f"{calib}/balls/{n}")) for n in circles]
 
-    def predict(img, q):
+    def predict(img, q=np.asarray(E.DEFAULT_POSE)):  # proprio only feeds the action head
         prop = np.concatenate([q, np.zeros(20), q, goal, np.asarray(gravity_dir(TH0, 0.0)), [0.25]])
         x = (jnp.array(prop, jnp.float32) - d["norm"][0]) / d["norm"][1]
         for n in (2, 3):  # the stack is not stored: take the one that fits the weights
             try:
                 o = Student(enc).apply(d["params"], jnp.array(np.tile(img[..., ::-1], n))[None], x[None])
-                return [proj(np.asarray(v).reshape(2, 3) / 10 + E.CENTER) for v in o[1:]]
+                return proj(np.asarray(o[1]).reshape(2, 3) / 10 + E.CENTER)
             except Exception:
                 continue
 
-    res = {"sim default pose": np.array([predict(im, np.asarray(E.DEFAULT_POSE))[0] for im in imgs]),
-           "real joints": np.array([predict(im, np.array(frames[n]["hand"]))[0] for im, n in zip(imgs, circles)]),
-           "image only": np.array([predict(im, np.asarray(E.DEFAULT_POSE))[1] for im in imgs]),
+    res = {"image only": np.array([predict(im) for im in imgs]),
            "constant (orbit center)": np.tile(proj(np.stack([E.CENTER, E.CENTER])), (len(imgs), 1, 1))}
     for k, v in res.items():
         e = np.linalg.norm(v - true, axis=2)
