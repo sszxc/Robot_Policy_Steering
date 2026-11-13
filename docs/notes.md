@@ -433,3 +433,58 @@ Arm static during the rotation (per-episode tilt, 35° cap about nominal as in v
   the balls when they swap sides and with a human hand in view: `docs/results/baoding_real/ssm3_img_real_check.png`.
 - Conclusion 3: the visual randomization transfers at the level of "where are the two balls" on static real frames.
   Not tested: moving balls, real finger poses of the gait, closed loop. Deploy `dagger_ssm3_img/student.pkl`.
+
+## Baoding v5: perturbations, no orbit tracking (2026-11-13; `out/rl/baoding_real/`, chains `pipeline6.sh`, `pipeline7.sh`)
+Goal: checkpoints for the first real closed loop. Balls may be placed anywhere on the palm; more physics gaps covered.
+
+### Stage 0: code
+- Student: proprio ball head removed (`dagger_ssm3_img2`: nominal 100 / 0.00, tilt + DR + visual DR 78 / 0.20; real
+  frames 2.5 / 1.9 px). No cost.
+- `PERT` in `baoding_noisy_env.py` (all off by default; `--pert key=value` in train / dagger / eval): ball forces
+  (white, sustained push, spin kick), finger-link push, gravity wander, joint zero offset, proprio delay, action
+  delay jitter, start noise, backlash, rate limit; model-level: torsional / rolling friction, ball radius / inertia,
+  actuator force limit, palm / finger friction. External forces go through `xfrc_applied` (as the tilt does).
+- `--rel`: no orbit tracking. Reward = capped pair rotation + flat-bottomed pair-center term (full within 15 mm of
+  the palm center); the 6 goal obs entries are zero (same layout: tracking checkpoints warm-start); start = pair
+  center offset y ±12 mm, z −20…+4 mm, gap 1–16 mm, any angle (`REL_INIT`).
+
+### Stage 1: sensitivity of the tracking policies (one perturbation at a time, strong level)
+DR teacher / `dagger_ssm3_img2`, tilt + DR + visual DR, 2 × 128 episodes, pace% / drop. Repeats differ by ~±2 points.
+
+| perturbation | teacher | student |
+|---|---|---|
+| none | 84 / 0.14 | 79 / 0.18 |
+| white ball force, std 0.5 ball weights | 56 / 0.50 | 44 / 0.62 |
+| ball push, std 1.5 weights, 0.3 s | 64 / 0.46 | 58 / 0.52 |
+| joint target rate limit 1 rad/s (nominal max 3) | 56 / 0.32 | 47 / 0.42 |
+| joint zero offset, std 0.1 rad | 73 / 0.24 | 52 / 0.41 |
+| backlash 0.1 rad | 78 / 0.18 | 69 / 0.26 |
+| actuator force limit × 0.5 | 76 / 0.17 | 68 / 0.24 |
+| ball radius × 0.95 / × 1.05 | 81 / 0.17, 82 / 0.15 | 71 / 0.25, 77 / 0.20 |
+| gravity wander, std 0.15 rad | 82 / 0.17 | 74 / 0.26 |
+| proprio one step old | 83 / 0.14 | 76 / 0.21 |
+| finger friction × 0.5 | 83 / 0.17 | 76 / 0.26 |
+| finger-link push 2 N, ball spin 30 rad/s, action-delay jitter 0.5, palm friction × 0.5 | no effect | no effect |
+| rolling friction 2 mm (condim 6) | 88 / 0.12 | 82 / 0.17 |
+
+- Conclusion 1: forces on the balls, joint speed limit and joint zero offset are the large ones (the student is hit
+  much harder than the teacher by the zero offset). Rolling friction helps slightly; not checked that condim 6 is
+  active in MJX-Warp. Rate / force limits and ball radius are model-level constants here: not trained on, they need
+  the real hand's numbers.
+
+### Stage 2: teacher A (`teacher_rel`: `--rel --dr`, warm start from the DR teacher, 200M steps, 38 min)
+- Training eval flat from the start (~79% pace while alive, drop 0.23–0.30). Diagnostic, 512 episodes, tilt + DR:
+
+| | pace% / drop |
+|---|---|
+| DR teacher, tracking, orbit start | 84 / 0.16 |
+| teacher A, orbit-like start | 81 / 0.15 |
+| teacher A, wide start | 71 / 0.24 |
+
+- Wide-start drops happen in the first 0.5 s (median step 6) and follow the tilt: gravity fingers-downhill component
+  > 0.3: 0.04–0.08; wrist-downhill: 0.83. Wrist-side starts (0.32) and large gaps (0.29) add a little.
+- Conclusion 2: the tracking reward is not needed. The wide start costs ~9 points of drops, in tilts that were
+  already hard; at the real nominal tilt (17° fingers downhill) it is cheap.
+- Sim-to-sim warning: both teachers drop 0.53 in MJX-JAX physics on CPU (Warp: 0.16). Cause not investigated.
+- Student `dagger_rel` (ssm3): nominal 97 / 0.00; tilt + DR + visual DR 66 / 0.27 (teacher 71 / 0.24); real frames
+  4.1 / 2.0 px.
