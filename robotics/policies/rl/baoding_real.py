@@ -70,52 +70,51 @@ def viz(calib, out, n=24):
 
 
 def check(calib, student, out):
-    """Open loop on the real labelled ball frames (white = ball0, yellow = ball1): the student's ball-position head
-    vs the position from the clicked circle (center ray + apparent radius of the 20 mm ball)."""
+    """Open loop on the real labelled ball frames (white = ball0, yellow = ball1): the student's ball-position head,
+    projected into the 88x64 image, vs the clicked ball center (px). Proprio = sim default pose or the real joints
+    (the real frames have a nearly open hand, outside the training poses). Baseline: both balls at the orbit center."""
     import pickle
     import jax.numpy as jnp
     from robotics.policies.rl import baoding_env as E
     from robotics.policies.rl.baoding_dagger import Student
     from robotics.policies.rl.baoding_noisy_env import TH0, gravity_dir
-    from robotics.policies.scripted import baoding as B
     c = json.load(open(scene.MJ / "lab" / "wrist_camera.json"))
     K, dist, T = np.array(c["K"]), np.array(c["dist"]), np.array(c["T_hand_cam"])
     d = pickle.load(open(student, "rb"))
-    nf = d["params"]["params"]["Conv_0"]["kernel"].shape[2] // 3 if d.get("enc", "flat") == "flat" else None
+    enc = d.get("enc", "flat")
     frames = {f["file"]: f for f in json.load(open(f"{calib}/balls/frames.json"))["frames"]}
+    circles = json.load(open(f"{calib}/balls/circles.json"))
     goal = np.concatenate([10 * (np.asarray(E.targets(0.0)) - E.CENTER[1:]).ravel(), [0.0, 1.0]])
-    ray = lambda uv: (lambda v: v / np.linalg.norm(v))(np.append(cv2.undistortPoints(np.float64([[uv]]), K, dist).ravel(), 1))
-    tiles, errs = [], []
-    for name, cs in json.load(open(f"{calib}/balls/circles.json")).items():
-        img = undistort(cv2.imread(f"{calib}/balls/{name}"))
-        q = np.array(frames[name]["hand"])
+    px = lambda uv: 32 * cv2.undistortPoints(np.float64([[uv]]), K, dist).ravel() + np.array([43.5, 31.5])
+    proj = lambda p: (lambda pc: 32 * pc[:, :2] / pc[:, 2:] + np.array([43.5, 31.5]))((p - T[:3, 3]) @ T[:3, :3])
+    true = np.array([[px(cs[k][:2]) if k in cs else [np.nan] * 2 for k in ("white", "yellow")] for cs in circles.values()])
+    imgs = [undistort(cv2.imread(f"{calib}/balls/{n}")) for n in circles]
+
+    def predict(img, q):
         prop = np.concatenate([q, np.zeros(20), q, goal, np.asarray(gravity_dir(TH0, 0.0)), [0.25]])
         x = (jnp.array(prop, jnp.float32) - d["norm"][0]) / d["norm"][1]
-        for n in ([nf] if nf else (2, 3)):  # ssm weights do not fix the stack: take the one that fits the MLP
+        for n in (2, 3):  # the stack is not stored: take the one that fits the weights
             try:
-                pred = Student(d.get("enc", "flat")).apply(d["params"], jnp.array(np.tile(img[..., ::-1], n))[None], x[None])[1]
-                break
+                return proj(np.asarray(Student(enc).apply(d["params"], jnp.array(np.tile(img[..., ::-1], n))[None],
+                                                          x[None])[1]).reshape(2, 3) / 10 + E.CENTER)
             except Exception:
                 continue
-        pred = np.asarray(pred).reshape(2, 3) / 10 + E.CENTER
-        big = cv2.resize(img, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
-        for i, (lab, col) in enumerate((("white", (255, 0, 0)), ("yellow", (0, 0, 255)))):
-            pc = T[:3, :3].T @ (pred[i] - T[:3, 3])
-            u, v = 32 * pc[0] / pc[2] + 43.5, 32 * pc[1] / pc[2] + 31.5
+
+    res = {"sim default pose": np.array([predict(im, np.asarray(E.DEFAULT_POSE)) for im in imgs]),
+           "real joints": np.array([predict(im, np.array(frames[n]["hand"])) for im, n in zip(imgs, circles)]),
+           "constant (orbit center)": np.tile(proj(np.stack([E.CENTER, E.CENTER])), (len(imgs), 1, 1))}
+    for k, v in res.items():
+        e = np.linalg.norm(v - true, axis=2)
+        print(f"{k:24s} median error white / yellow {np.nanmedian(e, 0).round(1)} px, within 8 px {np.nanmean(e < 8, 0).round(2)}")
+    tiles = []
+    for im, uv in zip(imgs, res["sim default pose"]):
+        big = cv2.resize(im, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
+        for (u, v), col in zip(uv, ((255, 0, 0), (0, 0, 255))):
             cv2.drawMarker(big, (int(4 * u + 2), int(4 * v + 2)), col, cv2.MARKER_CROSS, 14, 2)
-            if lab in cs:
-                cx, cy, r = cs[lab]
-                r0, r1 = ray((cx, cy)), ray((cx + r, cy))
-                true = T[:3, :3] @ (B.R / np.sin(np.arccos(r0 @ r1)) * r0) + T[:3, 3]
-                errs.append((lab, 1000 * (pred[i] - true)))
         tiles.append(big)
-    for lab in ("white", "yellow"):
-        e = np.array([v for k, v in errs if k == lab])
-        print(f"{lab}: n {len(e)}, |error| median {np.median(np.linalg.norm(e, axis=1)):.1f} mm, "
-              f"mean error (palm normal, thumb, fingers) {e.mean(0).round(1)} mm, std {e.std(0).round(1)}")
     tiles += [np.zeros_like(tiles[0])] * (-len(tiles) % 6)
     cv2.imwrite(out, np.vstack([np.hstack(tiles[r:r + 6]) for r in range(0, len(tiles), 6)]))
-    print(out, "(cross = predicted ball center: blue white ball, red yellow ball)")
+    print(out, "(sim default pose; cross = predicted center: blue for the white ball, red for the yellow ball)")
 
 
 if __name__ == "__main__":

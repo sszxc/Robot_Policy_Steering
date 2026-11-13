@@ -367,3 +367,59 @@ Arm static during the rotation (per-episode tilt, 35° cap about nominal as in v
 - Known differences left: the real palm / mount fills more of the image top than the sim hand base; the real
   background frames contain the (open) real fingers, which stay in the composite as distractors.
 - Two `BaodingNoisyEnv(warp=True)` in one process fail in `mjx.forward` (model metadata equality): one env per process.
+
+### Stage 1: teachers at 10 g (`out/rl/baoding_real/`, chain `pipeline.sh`)
+- Teacher: B2 warm start, `--tilt 35 --tilt_about nominal --w_over 1`, 150M steps (28 min). DR teacher: warm start
+  from it (`--dr`, ball mass ×[0.9, 1.1], other ranges as v3; critic input padded), 200M steps (39 min).
+- Tilt grid, pace% (drop), 64 eps, fingers / thumb / wrist / pinky downhill (DR teacher under DR physics):
+
+| tilt | teacher T=3 s | teacher T=8 s | DR teacher T=3 s | DR teacher T=8 s |
+|---|---|---|---|---|
+| 0° | 100 (0.00) | 100 (0.00) | 96 (0.03) | 100 (0.00) |
+| 15° | 100 / 95 / 18 (0.81) / 82 (0.16) | 100 / 98 / 21 (0.81) / 90 (0.09) | 100 / 95 / 14 (0.86) / 70 (0.28) | 100 / 99 / 16 (0.86) / 69 (0.28) |
+| 30° | 100 / 91 / 1 (1.00) / 37 (0.61) | 100 / 99 / 3 (1.00) / 41 (0.56) | 100 / 87 / 1 (1.00) / 25 (0.73) | 100 / 99 / 3 (1.00) / 28 (0.69) |
+| 45° | 100 / 74 (0.22) / 1 / 9 (0.89) | 100 / 81 (0.20) / 3 / 9 (0.88) | 99 / 68 (0.28) / 1 / 12 (0.86) | 100 / 76 (0.27) / 3 / 7 (0.89) |
+
+- Conclusion 1: the 10 g teacher is better than v3 B2 at T=3 s (flat palm 82 → 100, thumb-downhill 77 → 95). The
+  warm-started DR teacher keeps the flat palm (v3 C from scratch: 42–62%, now 96–100%) and most of the pinky side
+  (v3 C: ~2% at 15°, now 70%), so warm start fixes the "DR makes the teacher narrower" problem of v3. Wrist-downhill
+  stays unsolved, as expected.
+
+### Stage 2: wrist-camera students (DR teacher, `--dr --vis_dr --bg`, 10 iters, 128 envs; 18–33 min each)
+`eval --random`, 2 × 128 episodes per cell, pace% / drop rate (mean of the two batches), T∈[2,16] s:
+
+| policy | nominal | tilt | tilt + DR | tilt + DR + visual DR |
+|---|---|---|---|---|
+| DR teacher (state) | 100 / 0.00 | 87 / 0.13 | 85 / 0.14 | 85 / 0.15 |
+| flat, 2 frames | 99 / 0.01 | 79 / 0.17 | 76 / 0.22 | 69 / 0.27 |
+| flat, 3 frames | 98 / 0.02 | 82 / 0.16 | 77 / 0.21 | 70 / 0.26 |
+| ssm, 2 frames | 100 / 0.00 | 81 / 0.16 | 79 / 0.20 | 77 / 0.21 |
+| ssm, 3 frames | 100 / 0.00 | 84 / 0.15 | 79 / 0.20 | 78 / 0.20 |
+
+- Conclusion 2: the spatial-softmax encoder is the better student for the edge-on real view: it loses 1–2 points
+  under the visual randomization (flat: 7) and reaches 92% of its teacher (78 vs 85) with background, delay and
+  lighting randomized (v3 D student: 59 vs 68 = 87%, with weaker randomization). A third frame adds ~1 point. Use
+  `dagger_ssm3` (ssm2 is equivalent within noise).
+
+### Stage 3: open-loop check on real frames (`baoding_real --check`): weak evidence only
+- Ball-position head on the 33 labelled real frames, projected into the 88×64 image, vs the clicked ball centers
+  (ball radius ≈ 12 px). Median error white / yellow, fraction within 8 px:
+
+| student | proprio = sim default pose | proprio = real joints |
+|---|---|---|
+| flat2 | 4.8 / 2.3 px, 0.76 / 0.94 | 4.6 / 5.7 px, 1.00 / 0.91 |
+| ssm2 | 4.5 / 3.9 px, 0.88 / 0.85 | 4.6 / 7.9 px, 0.97 / 0.52 |
+| flat3 | 5.5 / 2.3 px, 0.79 / 0.79 | 6.8 / 7.6 px, 0.58 / 0.58 |
+| ssm3 | 2.9 / 3.1 px, 0.82 / 1.00 | 6.6 / 27 px, 0.64 / 0.00 |
+| constant (orbit center) | 5.0 / 9.0 px, 0.67 / 0.42 | |
+
+- With in-distribution proprio the students put both balls on the real balls (ssm3: 2.9 / 3.1 px, clearly better
+  than the constant guess for the yellow ball; `docs/results/baoding_real/ssm3_real_check.png`), so the real
+  images do drive the vision features. With the real joints the head breaks (ssm3 yellow: 27 px): the real frames
+  were taken with a nearly open hand (MCP ≈ 0.2 rad, training poses ≈ 1.2 rad), and the head leans on proprio.
+- Limits: balls were static and partly held by a human hand; the clicked radius is a color patch, not the ball edge,
+  so there is no depth ground truth; the white ball sits near the constant guess in most frames. This check cannot
+  confirm closed-loop transfer.
+- Next: (1) record real frames with the fingers in the sim start pose (`E.DEFAULT_POSE`) and balls at several orbit
+  phases; (2) add a ball-position head on the image features alone (no proprio), so the probe tests vision only;
+  (3) then closed loop on the real hand at T = 8–16 s, palm at the nominal tilt.
