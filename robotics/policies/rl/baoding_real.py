@@ -70,7 +70,8 @@ def viz(calib, out, n=24):
 
 
 def check(calib, student, out):
-    """Open loop on the real labelled ball frames (white = ball0, yellow = ball1): the student's ball-position head,
+    """Open loop on the real labelled ball frames (white = ball0, yellow = ball1): the student's ball-position heads
+    (with proprio, and 'image only'),
     projected into the 88x64 image, vs the clicked ball center (px). Proprio = sim default pose or the real joints
     (the real frames have a nearly open hand, outside the training poses). Baseline: both balls at the orbit center."""
     import pickle
@@ -95,26 +96,27 @@ def check(calib, student, out):
         x = (jnp.array(prop, jnp.float32) - d["norm"][0]) / d["norm"][1]
         for n in (2, 3):  # the stack is not stored: take the one that fits the weights
             try:
-                return proj(np.asarray(Student(enc).apply(d["params"], jnp.array(np.tile(img[..., ::-1], n))[None],
-                                                          x[None])[1]).reshape(2, 3) / 10 + E.CENTER)
+                o = Student(enc).apply(d["params"], jnp.array(np.tile(img[..., ::-1], n))[None], x[None])
+                return [proj(np.asarray(v).reshape(2, 3) / 10 + E.CENTER) for v in o[1:]]
             except Exception:
                 continue
 
-    res = {"sim default pose": np.array([predict(im, np.asarray(E.DEFAULT_POSE)) for im in imgs]),
-           "real joints": np.array([predict(im, np.array(frames[n]["hand"])) for im, n in zip(imgs, circles)]),
+    res = {"sim default pose": np.array([predict(im, np.asarray(E.DEFAULT_POSE))[0] for im in imgs]),
+           "real joints": np.array([predict(im, np.array(frames[n]["hand"]))[0] for im, n in zip(imgs, circles)]),
+           "image only": np.array([predict(im, np.asarray(E.DEFAULT_POSE))[1] for im in imgs]),
            "constant (orbit center)": np.tile(proj(np.stack([E.CENTER, E.CENTER])), (len(imgs), 1, 1))}
     for k, v in res.items():
         e = np.linalg.norm(v - true, axis=2)
         print(f"{k:24s} median error white / yellow {np.nanmedian(e, 0).round(1)} px, within 8 px {np.nanmean(e < 8, 0).round(2)}")
     tiles = []
-    for im, uv in zip(imgs, res["sim default pose"]):
+    for im, uv in zip(imgs, res["image only"]):
         big = cv2.resize(im, None, fx=4, fy=4, interpolation=cv2.INTER_NEAREST)
         for (u, v), col in zip(uv, ((255, 0, 0), (0, 0, 255))):
             cv2.drawMarker(big, (int(4 * u + 2), int(4 * v + 2)), col, cv2.MARKER_CROSS, 14, 2)
         tiles.append(big)
     tiles += [np.zeros_like(tiles[0])] * (-len(tiles) % 6)
     cv2.imwrite(out, np.vstack([np.hstack(tiles[r:r + 6]) for r in range(0, len(tiles), 6)]))
-    print(out, "(sim default pose; cross = predicted center: blue for the white ball, red for the yellow ball)")
+    print(out, "(image-only head; cross = predicted center: blue for the white ball, red for the yellow ball)")
 
 
 if __name__ == "__main__":

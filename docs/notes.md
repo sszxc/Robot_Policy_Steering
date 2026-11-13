@@ -414,7 +414,7 @@ Arm static during the rotation (per-episode tilt, 35° cap about nominal as in v
 | constant (orbit center) | 5.0 / 9.0 px, 0.67 / 0.42 | |
 
 - With in-distribution proprio the students put both balls on the real balls (ssm3: 2.9 / 3.1 px, clearly better
-  than the constant guess for the yellow ball; `docs/results/baoding_real/ssm3_real_check.png`), so the real
+  than the constant guess for the yellow ball), so the real
   images do drive the vision features. With the real joints the head breaks (ssm3 yellow: 27 px): the real frames
   were taken with a nearly open hand (MCP ≈ 0.2 rad, training poses ≈ 1.2 rad), and the head leans on proprio.
 - Limits: balls were static and partly held by a human hand; the clicked radius is a color patch, not the ball edge,
@@ -423,3 +423,13 @@ Arm static during the rotation (per-episode tilt, 35° cap about nominal as in v
 - Next: (1) record real frames with the fingers in the sim start pose (`E.DEFAULT_POSE`) and balls at several orbit
   phases; (2) add a ball-position head on the image features alone (no proprio), so the probe tests vision only;
   (3) then closed loop on the real hand at T = 8–16 s, palm at the nominal tilt.
+
+### Stage 3b: image-only ball head (`dagger_ssm3_img`, 2026-11-12)
+- Student gets a second ball-position head on the image features alone (keypoints → 128 → 6, no proprio; same loss
+  weight). Same recipe as ssm3 (33 min). Sim, pace% / drop: nominal 100 / 0.01, tilt 83 / 0.16, tilt + DR 79 / 0.19,
+  tilt + DR + visual DR 80 / 0.20 (ssm3: 78 / 0.20): the extra head costs nothing.
+- Real frames (same 33, no new data): image-only head 3.2 / 3.3 px median (white / yellow), 97% / 100% within 8 px
+  (constant guess 5.0 / 9.0 px, 67% / 42%; proprio head with the real open-hand joints 13.9 / 6.6 px). It follows
+  the balls when they swap sides and with a human hand in view: `docs/results/baoding_real/ssm3_img_real_check.png`.
+- Conclusion 3: the visual randomization transfers at the level of "where are the two balls" on static real frames.
+  Not tested: moving balls, real finger poses of the gait, closed loop. Deploy `dagger_ssm3_img/student.pkl`.

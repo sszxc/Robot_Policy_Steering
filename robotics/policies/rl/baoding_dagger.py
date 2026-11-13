@@ -29,7 +29,8 @@ def keypoints(x, temp):
 
 
 class Student(nn.Module):
-    """Encoder -> concat proprio -> MLP; heads: action (tanh) and ball positions.
+    """Encoder -> concat proprio -> MLP; heads: action (tanh), ball positions, ball positions from the image
+    features alone (no proprio: the probe for real images).
     enc='flat': NatureCNN on the frame stack, flattened map. enc='ssm': per-frame CNN (shared, half-resolution maps)
     -> spatial softmax keypoints (32 per frame), all frames concatenated."""
     enc: str = "flat"
@@ -49,10 +50,11 @@ class Student(nn.Module):
             temp = jnp.exp(self.param("log_temp", nn.initializers.zeros, ()))
             f = keypoints(nn.Conv(32, (1, 1))(x), temp)
             f = jnp.concatenate(jnp.split(f, nf, 0), -1)
+        ball_img = nn.Dense(6)(nn.swish(nn.Dense(128)(f)))
         h = jnp.concatenate([f, prop], -1)
         for w in (512, 256, 128):
             h = nn.swish(nn.Dense(w)(h))
-        return jnp.tanh(nn.Dense(20)(h)), nn.Dense(6)(h)
+        return jnp.tanh(nn.Dense(20)(h)), nn.Dense(6)(h), ball_img
 
 
 def make_student_act(params, norm, enc="flat"):
@@ -115,8 +117,8 @@ if __name__ == "__main__":
     @jax.jit
     def train_step(params, opt_state, pix, x, y, yb):
         def loss_fn(p):
-            act, bp = model.apply(p, pix, x)
-            la, lb = jnp.mean((act - y) ** 2), jnp.mean((bp - yb) ** 2)
+            act, bp, bi = model.apply(p, pix, x)
+            la, lb = jnp.mean((act - y) ** 2), jnp.mean((bp - yb) ** 2) + jnp.mean((bi - yb) ** 2)
             return la + a.w_aux * lb, (la, lb)
         (_, (la, lb)), g = jax.value_and_grad(loss_fn, has_aux=True)(params)
         upd, opt_state = opt.update(g, opt_state)
