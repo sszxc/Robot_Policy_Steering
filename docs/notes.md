@@ -488,3 +488,32 @@ DR teacher / `dagger_ssm3_img2`, tilt + DR + visual DR, 2 × 128 episodes, pace%
 - Sim-to-sim warning: both teachers drop 0.53 in MJX-JAX physics on CPU (Warp: 0.16). Cause not investigated.
 - Student `dagger_rel` (ssm3): nominal 97 / 0.00; tilt + DR + visual DR 66 / 0.27 (teacher 71 / 0.24); real frames
   4.1 / 2.0 px.
+
+### Stage 3: perturbation-trained variants (P), `pipeline7.sh`
+- P (about half the strong levels): white ball force 0.25 weights, push 1.0 weights, joint zero offset 0.05 rad,
+  backlash U[0, 0.06] rad, gravity wander 0.08 rad, proprio delay p = 0.5 (delay and backlash are per episode from
+  here on; stage 1 used fixed values). Teachers: 200M steps, warm start (`teacher_rel` → `teacher_rel_p`,
+  `teacher_dr` → `teacher_trk_p`); ssm3 students trained under the same P.
+- Tilt + DR + visual DR, 2 × 128 episodes, teacher | student, pace% / drop. rel rows use the wide start. "trk" =
+  DR teacher / `dagger_ssm3_img2` from stage 1 (its backlash row used a fixed 0.1 rad, not comparable).
+
+| perturbation | trk | trk_p | rel | rel_p |
+|---|---|---|---|---|
+| none | 84 / 0.14, 79 / 0.18 | 82 / 0.15, 74 / 0.21 | 70 / 0.25, 66 / 0.28 | 70 / 0.24, 58 / 0.31 |
+| ball force 0.5 | 56 / 0.50, 44 / 0.62 | 61 / 0.38, 54 / 0.45 | 44 / 0.56, 37 / 0.61 | 48 / 0.49, 42 / 0.52 |
+| push 1.5 | 64 / 0.46, 58 / 0.52 | 77 / 0.23, 68 / 0.31 | 58 / 0.44, 51 / 0.54 | 65 / 0.32, 53 / 0.40 |
+| zero offset 0.1 | 73 / 0.24, 52 / 0.41 | 78 / 0.17, 54 / 0.37 | 62 / 0.29, 47 / 0.41 | 64 / 0.26, 40 / 0.38 |
+| backlash ≤ 0.1 | – | 80 / 0.17, 73 / 0.22 | 64 / 0.26, 58 / 0.29 | 64 / 0.25, 52 / 0.32 |
+| rate 1 rad/s | 56 / 0.32, 47 / 0.42 | 56 / 0.33, 47 / 0.43 | 41 / 0.41, 38 / 0.42 | 46 / 0.39, 39 / 0.41 |
+
+- Nominal (no tilt, no DR): trk_p 100 / 0.00, 99 / 0.00; rel 98 / 0.00, 97 / 0.00; rel_p 97 / 0.00, 90 / 0.01.
+  Real frames, image head: trk_p 3.3 / 2.5 px, rel_p 3.9 / 2.7 px.
+- Conclusion 3: P training helps the teachers without a baseline cost (push drops halve for trk_p: 0.46 → 0.23).
+  The students keep about half of that gain under ball forces and pay 5 (trk_p) to 8 (rel_p) points without
+  perturbations. Joint zero offset stays a student problem (teacher 78, student 54) and the rate limit is untouched
+  (not trained on). `dagger_rel_p` is the weakest student.
+- Checkpoints for the real hand (`out/rl/baoding_real/<name>/student.pkl`): `dagger_ssm3_img2` (tracking),
+  `dagger_trk_p` (tracking + P), `dagger_rel` (no orbit, goal obs = zeros), `dagger_rel_p` (no orbit + P).
+  Tracking students need the target phase set from the observed pair angle at the start.
+- Open: students under joint zero offset; rate / force limits and ball radius as per-episode DR once the real
+  hand's numbers are known; the JAX-vs-Warp gap.
