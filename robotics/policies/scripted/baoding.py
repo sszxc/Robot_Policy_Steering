@@ -39,8 +39,8 @@ def build(a, b, solref=(0.005, 1)):
     return ball_spec(a, b, solref).compile()
 
 
-def ball_spec(a, b, solref=(0.005, 1)):
-    """Tilted hand-only scene with two balls side by side near the finger roots."""
+def ball_spec(a, b, solref=(0.005, 1), r=R, mass=MASS):
+    """Tilted hand-only scene with two balls (radius r, mass each) side by side near the finger roots."""
     q = tilt_quat(a, b)
     spec = scene.hand_only(pos=(0, 0, 0.3), quat=q)
     Rh = np.zeros(9)
@@ -50,7 +50,7 @@ def ball_spec(a, b, solref=(0.005, 1)):
         p = np.array([0, 0, 0.3]) + Rh @ BALL_START[i]
         body = spec.worldbody.add_body(name=f"ball{i}", pos=p.tolist())
         body.add_freejoint()
-        body.add_geom(type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[R], mass=MASS, rgba=list(rgba),
+        body.add_geom(type=mujoco.mjtGeom.mjGEOM_SPHERE, size=[r], mass=mass, rgba=list(rgba),
                       condim=4, friction=[0.6, 0.005, 0.0001], solref=list(solref))
     return spec
 

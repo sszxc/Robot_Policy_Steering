@@ -3,7 +3,8 @@
 --cmd (v2 speed-command policies, MuJoCo Warp): speed grid, mid-episode command switch, sweep video.
 --tilt_grid: pace / drop over palm tilt x azimuth at the --grid periods (env needs --tilt for the tilt physics).
 --random: episodes sampled like training (speed, tilt, DR, visuals); pace vs each episode's own command.
---pert key=value ...: extra perturbations on top (sensitivity).
+--pert key=value ...: extra perturbations on top (sensitivity). --contacts: per-finger ball-contact fraction too.
+Task options (--ball_d, --reverse, ...) must match the checkpoints.
 Example: python -m robotics.policies.rl.baoding_noisy_eval --teacher ... --vision_rl ... --student ... --video"""
 from platforms.paths import output_path
 import argparse
@@ -17,7 +18,7 @@ from PIL import Image, ImageDraw
 
 from robotics.policies.rl import baoding_env as E
 from robotics.policies.rl.baoding_dagger import load_student
-from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv, gravity_dir
+from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv, add_task_args, gravity_dir, task_kw
 from robotics.policies.rl.baoding_noisy_train import load_policy
 
 T = 400
@@ -57,6 +58,7 @@ def rollout(env, act, n, frozen=False, seed=0, schedule=None, tilt=None):
         s = set_tilt(env, s, tilt)
     pix0 = s.obs.get("pixels/view_0")
     alive, turn, err, qpos, views = np.ones(n, bool), np.zeros((T, n)), [], [], []
+    rollout.q, rollout.alive = [], []  # all episodes, for contacts()
     rollout.omega = np.asarray(s.info["omega"])
     nanterm = np.zeros(n, bool)
     for t in range(T):
@@ -70,9 +72,37 @@ def rollout(env, act, n, frozen=False, seed=0, schedule=None, tilt=None):
         nanterm |= alive & (np.asarray(s.done) > 0) & (np.asarray(s.metrics["dropped"]) == 0)
         err.append(np.where(alive, np.asarray(s.metrics["track_err"]), np.nan))
         qpos.append(np.asarray(s.pipeline_state.qpos[0]))
+        rollout.q.append(np.asarray(s.pipeline_state.qpos))
+        rollout.alive.append(alive.copy())
         alive &= np.asarray(s.done) == 0
     rollout.nanterm = nanterm.mean()  # episodes ended by a NaN state rather than a drop
     return turn, 1 - alive, 1000 * np.nanmean(err), qpos, views
+
+
+def contacts(env, every=4, n=32):
+    """Fraction of alive steps (every 4th, first n episodes of the last rollout) in which each finger, thumb..pinky,
+    touches a ball. CPU MuJoCo replay of the stored qpos."""
+    m = env.mj_model
+    d = mujoco.MjData(m)
+    names = [m.body(m.geom_bodyid[g]).name for g in range(m.ngeom)]
+    finger = np.array([(int(b[13:]) - 1) // 4 if b.startswith("finger_r_link") else -1 for b in names])
+    ball = np.array([b.startswith("ball") for b in names])
+    hits = []
+    for q, al in list(zip(rollout.q, rollout.alive))[::every]:
+        for i in np.flatnonzero(al[:n]):
+            d.qpos[:] = q[i]
+            mujoco.mj_forward(m, d)
+            c = np.zeros(5, bool)
+            for x in d.contact[:d.ncon]:
+                for g1, g2 in ((x.geom1, x.geom2), (x.geom2, x.geom1)):
+                    if finger[g1] >= 0 and ball[g2]:
+                        c[finger[g1]] = True
+            hits.append(c)
+    return np.mean(hits, 0)
+
+
+def contact_str(a, env):
+    return ("  contacts thumb/index/middle/ring/pinky " + " ".join(f"{x:.2f}" for x in contacts(env))) if a.contacts else ""
 
 
 def video(env, qpos, views, path, fps=20, labels=None):
@@ -117,8 +147,8 @@ def eval_cmd(a, env, pols):
                 sch = np.full(T, P)
                 turn, drop, err, _, _ = rollout(env, act, a.episodes, frozen, schedule=sch)
                 print(f"{tag:18s} T={P:4.1f}s  pace {100 * pace(turn, sch):4.0f}%  drop {drop.mean():.2f}  "
-                      f"track_err {err:5.1f} mm", flush=True)
-            for p0, p1 in switches:
+                      f"track_err {err:5.1f} mm" + contact_str(a, env), flush=True)
+            for p0, p1 in (switches if a.switches else []):
                 sch = np.where(np.arange(T) < T // 2, p0, p1)
                 turn, drop, err, _, _ = rollout(env, act, a.episodes, frozen, schedule=sch)
                 print(f"{tag:18s} switch T {p0:.0f}->{p1:.0f}s at 10 s: pace before {100 * pace(turn, sch, 100, 200):4.0f}%,"
@@ -139,7 +169,7 @@ def eval_random(a, env, pols):
             turn, drop, err, _, _ = rollout(env, act, a.episodes, seed=100 + seed)
             target = rollout.omega * env.ctrl_dt * T
             print(f"{name:12s} seed {seed}  pace {100 * (turn.sum(0) / target).mean():4.0f}%  drop {drop.mean():.2f}  "
-                  f"track_err {err:5.1f} mm  nan-ended {rollout.nanterm:.3f}", flush=True)
+                  f"track_err {err:5.1f} mm  nan-ended {rollout.nanterm:.3f}" + contact_str(a, env), flush=True)
 
 
 def eval_tilt(a, env, pols):
@@ -184,6 +214,9 @@ if __name__ == "__main__":
     p.add_argument("--tilts", nargs="+", default=[0, 15, 30, 45], help="--tilt_grid: tilts (deg) from palm-up")
     p.add_argument("--cam", default="top", choices=["top", "wrist"], help="--cmd camera")
     p.add_argument("--out", help="--cmd video dir (default out/rl/baoding_cmd)")
+    p.add_argument("--contacts", action="store_true", help="also print per-finger ball-contact fractions")
+    p.add_argument("--switches", action="store_true", help="--cmd: also the mid-episode speed switches")
+    add_task_args(p)
     a = p.parse_args()
     off = dict(ball_noise=0, ball_bias=0, q_noise=0, qd_noise=0, act_noise=0, delay_prob=0, kick_prob=0)
     a.out = a.out or str(output_path("rl/baoding_cmd"))
@@ -193,6 +226,7 @@ if __name__ == "__main__":
     if a.vis_dr:
         v2.update(vis_dr=True, bg=a.bg)
     v2["stack"], v2["rel"] = a.stack, a.rel
+    v2.update(task_kw(a))
     v2["pert"] = {k: float(v) for k, v in (x.split("=") for x in a.pert)}
     if a.tilt is not None:
         v2.update(tilt_max=np.radians(a.tilt), g_obs=not a.no_g_obs, tilt_about=a.tilt_about)

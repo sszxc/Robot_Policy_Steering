@@ -14,7 +14,7 @@ import jax.numpy as jnp
 import numpy as np
 import optax
 
-from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv
+from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv, add_task_args, task_kw
 from robotics.policies.rl.baoding_noisy_train import load_policy
 
 T = 400  # steps per episode
@@ -88,6 +88,7 @@ if __name__ == "__main__":
     p.add_argument("--rel", action="store_true", help="teacher trained with --rel")
     p.add_argument("--pert", nargs="+", default=[], help="extra perturbations, key=value (PERT in baoding_noisy_env)")
     p.add_argument("--out")
+    add_task_args(p)
     a = p.parse_args()
     a.out = a.out or str(output_path(f"rl/baoding_{'cmd' if a.periods else 'noisy'}/dagger"))
     os.makedirs(a.out, exist_ok=True)
@@ -96,7 +97,7 @@ if __name__ == "__main__":
     env = BaodingNoisyEnv(render=True, periods=a.periods, warp=a.warp, nworld=a.envs, cam=a.cam,
                           tilt_max=None if a.tilt is None else np.radians(a.tilt), dr=a.dr,
                           tilt_about=a.tilt_about, vis_dr=a.vis_dr, bg=a.bg, stack=a.stack, rel=a.rel,
-                          pert={k: float(v) for k, v in (x.split("=") for x in a.pert)})
+                          pert={k: float(v) for k, v in (x.split("=") for x in a.pert)}, **task_kw(a))
     nv = env.observation_size["vis_state"]
     reset, step = jax.jit(jax.vmap(env.reset)), jax.jit(jax.vmap(env.step))
     teacher = load_policy(a.teacher, False, env)
@@ -169,7 +170,6 @@ if __name__ == "__main__":
         print(line, flush=True)
         log.write(line + "\n")
         log.flush()
-        with open(os.path.join(a.out, f"student_{it}.pkl"), "wb") as f:
-            pickle.dump({"params": params, "norm": norm, "enc": a.enc}, f)
-        with open(os.path.join(a.out, "student.pkl"), "wb") as f:
-            pickle.dump({"params": params, "norm": norm, "enc": a.enc}, f)
+        for name in (f"student_{it}.pkl", "student.pkl"):
+            with open(os.path.join(a.out, name), "wb") as f:
+                pickle.dump({"params": params, "norm": norm, "enc": a.enc, "task": task_kw(a)}, f)

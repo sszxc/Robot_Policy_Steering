@@ -13,7 +13,11 @@ stack = number of stacked frames in 'pixels/view_0' (newest first).
 rel=True: no orbit to track. Reward = pair rotation at the commanded pace + a flat-bottomed term keeping the pair
 center near the palm center; goal obs entries are zero (layout unchanged, so tracking checkpoints warm-start);
 start = pair anywhere on the palm (REL_INIT). 'track_err' then reports the pair-center offset.
-pert = overrides of PERT (extra perturbations, all off by default; used for sensitivity evals)."""
+pert = overrides of PERT (extra perturbations, all off by default; used for sensitivity evals).
+Task options (add_task_args / task_kw, stored with checkpoints): ball_d (m; the orbit follows geometry(), the reset
+pose start_pose()), ball_g, reverse (pair rotates the other way), ramp (targets interpolated over each control step,
+as the real trajectory controller), windup (commanded target kept within +-windup rad of the joint angle).
+Positions in obs stay relative to the fixed reference E.CENTER."""
 import jax
 import jax.numpy as jnp
 import mujoco
@@ -63,12 +67,61 @@ PERT = dict(
     # model-level (same for all episodes)
     tors=1.0,        # torsional friction scale (all geoms)
     roll=None,       # rolling friction coefficient (m): contacts become condim 6
-    ball_r=1.0, ball_I=1.0, frc=1.0,  # ball radius / ball inertia / actuator force limit scales
+    ball_r=1.0, ball_I=1.0, ball_m=1.0, frc=1.0,  # ball radius / inertia / mass, actuator force limit scales
     palm_fric=1.0, finger_fric=1.0)   # sliding friction scales by hand part
 # rel start: pair-center offset range (y, z; m, more room toward the wrist) and gap between the balls (m)
 REL_INIT = dict(lo=(-0.012, -0.02), hi=(0.012, 0.004), gap=(0.001, 0.016))
 SS = 2  # wrist camera: render at SS x the policy resolution, composite the background, average down
 TH0 = -E.TILT[0]  # nominal palm tilt: 17 deg, fingers downhill
+
+
+def geometry(ball_d):
+    """Ball diameter (m) -> radius, ball-center height above the hand origin, orbit center (y, z), orbit radius.
+    40 mm: the v1-v5 setup. Larger balls: the center moves toward the fingertips so the wrist-side ball edge stays
+    >= 40 mm from the hand origin (clear of the thumb base)."""
+    r = ball_d / 2
+    return r, E.PALM_X + r + 0.002, np.array([0.0, max(E.CENTER[2], 0.042 + 2 * r)]), r + 0.002
+
+
+def start_pose(ball_d, tol=0.0015):
+    """Reset (and real start) pose: E.DEFAULT_POSE opened until balls anywhere on the orbit overlap the hand by <= tol
+    (40 mm: DEFAULT_POSE, max 1.1 mm). Finger flexion scaled down in steps; thumb from a few candidates."""
+    r, bx, c, rad = geometry(ball_d)
+    m, R, o = E.build_model(r=r)
+    d = mujoco.MjData(m)
+
+    def overlap(q):
+        worst = 0.0
+        for a in np.radians(np.arange(0, 360, 15)):
+            yz = c + rad * np.array([np.cos(a), np.sin(a)])
+            d.qpos[:] = m.qpos0
+            d.qpos[:20], d.qpos[20:23], d.qpos[27:30] = q, o + R @ [bx, *yz], o + R @ [bx, *(2 * c - yz)]
+            mujoco.mj_forward(m, d)
+            worst = max([worst] + [-x.dist for x in d.contact[:d.ncon]])
+        return worst
+
+    thumbs = [(c1, yaw, *pi) for pi in ((0.8, 0.5), (0.4, 0.25), (0.0, 0.0)) for yaw in (-0.2, -0.6, -1.0)
+              for c1 in (0.0, 0.4, -0.4)]
+    for k in np.linspace(1.0, 0.0, 11):
+        for th in thumbs:
+            q = np.array(E.DEFAULT_POSE)
+            q[4:] = q[4:] * np.tile([1.0, k, k, k], 4)
+            q[:4] = th
+            if overlap(q) <= tol:
+                return q
+    raise ValueError(f"no start pose for {1e3 * ball_d:.0f} mm balls")
+
+
+def add_task_args(p):
+    p.add_argument("--ball_d", type=float, default=40.0, help="ball diameter (mm)")
+    p.add_argument("--ball_g", type=float, help="ball mass (g); default 10 g x (d / 40 mm)^2 (PLA shell)")
+    p.add_argument("--reverse", action="store_true", help="the pair rotates the other way")
+    p.add_argument("--ramp", action="store_true", help="targets interpolated over each control step (real controller)")
+    p.add_argument("--windup", type=float, help="anti-windup: commanded target within +-windup rad of the joint angle")
+
+
+def task_kw(a):
+    return dict(ball_d=a.ball_d / 1000, ball_g=a.ball_g, reverse=a.reverse, ramp=a.ramp, windup=a.windup)
 
 
 def gravity_dir(th, ph):
@@ -77,11 +130,11 @@ def gravity_dir(th, ph):
     return jnp.stack([-jnp.cos(th), jnp.sin(th) * jnp.sin(ph), jnp.sin(th) * jnp.cos(ph)], -1)
 
 
-def build_model_cam(sim_dt, cam="top"):
+def build_model_cam(sim_dt, cam="top", r=B.R, mass=B.MASS):
     """E.build_model plus one camera: 'top' (matches the ray caster view, fingers up, thumb right) or 'wrist'.
     -> model, R, o, image (w, h)."""
-    m0, R, o = E.build_model(sim_dt)
-    spec = B.ball_spec(*E.TILT, solref=(0.02, 1))
+    m0, R, o = E.build_model(sim_dt, r, mass)
+    spec = B.ball_spec(*E.TILT, solref=(0.02, 1), r=r, mass=mass)
     scene.add_hand_self_pairs(spec)
     q, res = np.zeros(4), (BR.RES, BR.RES)
     if cam == "top":
@@ -106,10 +159,16 @@ class BaodingNoisyEnv(Env):
                  ball_noise=0.002, ball_bias=0.001, q_noise=0.005, qd_noise=0.1, act_noise=0.05, delay_prob=0.5,
                  kick_prob=0.01, kick_std=0.1, periods=None, warp=False, nworld=None, w_over=0.0, cam="top",
                  tilt_max=None, g_obs=None, g_noise=0.03, dr=False, vis_dr=False,
-                 tilt_about="up", bg=None, stack=2, pert=None, rel=False):
+                 tilt_about="up", bg=None, stack=2, pert=None, rel=False, ball_d=0.040, ball_g=None, reverse=False,
+                 ramp=False, windup=None):
         self.warp, self.cmd, self.rel = warp, periods is not None, rel
-        self.mj_model, R, o, self.res = (build_model_cam(sim_dt, cam) if warp
-                                         else (*E.build_model(sim_dt), (BR.RES, BR.RES)))  # res = image (w, h)
+        self.r, self.ball_x, c, self.rad = geometry(ball_d)
+        self.c = jnp.array(c)
+        mass = B.MASS * (ball_d / 0.04) ** 2 if ball_g is None else ball_g / 1000
+        self.q0 = jnp.array(start_pose(ball_d))
+        self.dir, self.ramp, self.windup = (-1.0 if reverse else 1.0), ramp, windup
+        self.mj_model, R, o, self.res = (build_model_cam(sim_dt, cam, self.r, mass) if warp
+                                         else (*E.build_model(sim_dt, self.r, mass), (BR.RES, BR.RES)))  # res = image (w, h)
         assert not set(pert or {}) - set(PERT), set(pert) - set(PERT)
         self.pert = P = {**PERT, **(pert or {})}
         m = self.mj_model
@@ -129,7 +188,8 @@ class BaodingNoisyEnv(Env):
         m.geom_size[self.ball_geoms, 0] *= P["ball_r"]
         m.geom_rbound[self.ball_geoms] *= P["ball_r"]
         m.geom_aabb[self.ball_geoms, 3:] *= P["ball_r"]
-        m.body_inertia[self.ball_bodies] *= P["ball_I"]
+        m.body_inertia[self.ball_bodies] *= P["ball_I"] * P["ball_m"]
+        m.body_mass[self.ball_bodies] *= P["ball_m"]
         m.actuator_forcerange[:] *= P["frc"]
         self.xf = any(P[k] > 0 for k in ("f_ball", "push", "f_link"))
         self.R, self.o = jnp.array(R), jnp.array(o)
@@ -180,6 +240,9 @@ class BaodingNoisyEnv(Env):
     @property
     def backend(self):
         return "mjx"
+
+    def tg(self, th):
+        return E.targets(th, self.c, self.rad)
 
     def _img(self, data, info, rng):
         if not self.warp:
@@ -233,16 +296,16 @@ class BaodingNoisyEnv(Env):
     def _init(self, rng):
         """Random start: hand pose noise, balls on the orbit at a random phase; targets start aligned."""
         r1, r2, r3, r4, r5, r6, r7, r8 = jax.random.split(rng, 8)
-        hand_q = jnp.clip(E.DEFAULT_POSE + 0.05 * jax.random.normal(r1, (20,)), self.lo, self.hi)
+        hand_q = jnp.clip(self.q0 + 0.05 * jax.random.normal(r1, (20,)), self.lo, self.hi)
         phi = jax.random.uniform(r2, (), maxval=2 * jnp.pi)
         P = self.pert
-        yz = E.targets(phi) + P["init_ball"] * jax.random.normal(r3, (2, 2))
+        yz = self.tg(phi) + P["init_ball"] * jax.random.normal(r3, (2, 2))
         if self.rel:
             ka, kb = jax.random.split(jax.random.fold_in(r3, 1))
-            mid = E.CENTER[1:] + jax.random.uniform(ka, (2,), minval=jnp.array(REL_INIT["lo"]), maxval=jnp.array(REL_INIT["hi"]))
-            half = B.R + jax.random.uniform(kb, (), minval=REL_INIT["gap"][0], maxval=REL_INIT["gap"][1]) / 2
+            mid = self.c + jax.random.uniform(ka, (2,), minval=jnp.array(REL_INIT["lo"]), maxval=jnp.array(REL_INIT["hi"]))
+            half = self.r + jax.random.uniform(kb, (), minval=REL_INIT["gap"][0], maxval=REL_INIT["gap"][1]) / 2
             yz = mid + half * jnp.array([[1.0], [-1.0]]) * jnp.array([jnp.cos(phi), jnp.sin(phi)])
-        p = jnp.concatenate([jnp.full((2, 1), BALL_X), yz], 1) @ self.R.T + self.o
+        p = jnp.concatenate([jnp.full((2, 1), self.ball_x), yz], 1) @ self.R.T + self.o
         qpos = jnp.concatenate([hand_q, self.q_ball.at[0:3].set(p[0]).at[7:10].set(p[1])])
         b = E.balls_hand(qpos, self.R, self.o)
         # speed command: period log-uniform in `periods` (v1: fixed period)
@@ -335,7 +398,7 @@ class BaodingNoisyEnv(Env):
         q = old[:20] + info["q_bias"] + self.noise["q"] * jax.random.normal(k2, (20,))
         qd = old[20:] + self.noise["qd"] * jax.random.normal(k3, (20,))
         th = info["theta"]
-        goal = jnp.concatenate([10 * (E.targets(th) - E.CENTER[1:]).ravel(), jnp.array([jnp.sin(th), jnp.cos(th)])])
+        goal = jnp.concatenate([10 * (self.tg(th) - E.CENTER[1:]).ravel(), jnp.array([jnp.sin(th), jnp.cos(th)])])
         goal = jnp.zeros(6) if self.rel else goal
         cmd = (info["omega"] / jnp.pi)[None] if self.cmd else jnp.zeros(0)  # T=2 s -> 1.0
         if self.g_obs:
@@ -349,7 +412,7 @@ class BaodingNoisyEnv(Env):
             drv = jnp.concatenate([d["ball_mass"] - 1, jnp.stack([d["hand_fric"] - 1, d["ball_fric"] - 1, d["kp"].mean() - 1,
                                    jnp.log(d["damp"]).mean(), 50 * (d["solref"] - 0.02)])])
             cmd = jnp.concatenate([drv, cmd])
-        full = E.observe(data.qpos, data.qvel, info["ctrl"], th, self.R, self.o)
+        full = E.observe(data.qpos, data.qvel, info["ctrl"], th, self.R, self.o, self.tg(th))
         priv = jnp.concatenate([full.at[72:78].set(0.0) if self.rel else full,
                                 info["delay"][None], 1000 * info["bias"].ravel(), cmd])
         obs = {"state": jnp.concatenate([prop, balls, goal, cmd_a]), "vis_state": jnp.concatenate([prop, goal, cmd_a]),
@@ -395,7 +458,10 @@ class BaodingNoisyEnv(Env):
         dq = self.action_scale * used
         if P["rate"] is not None:
             dq = jnp.clip(dq, -P["rate"] * self.ctrl_dt, P["rate"] * self.ctrl_dt)
-        cmd = jnp.clip(info["ctrl"] + dq, self.lo, self.hi)  # commanded target (observed)
+        cmd = info["ctrl"] + dq
+        if self.windup is not None:
+            cmd = jnp.clip(cmd, data.qpos[:20] - self.windup, data.qpos[:20] + self.windup)
+        cmd = jnp.clip(cmd, self.lo, self.hi)  # commanded target (observed)
         # backlash: the effective target only moves once the command leaves the play around it
         ctrl = jnp.clip(data.ctrl, cmd - info["bl"] / 2, cmd + info["bl"] / 2) if P["backlash"] > 0 else cmd
         # random in-plane kick on one ball
@@ -415,6 +481,7 @@ class BaodingNoisyEnv(Env):
             P["f_link"] * jax.random.normal(kp[6], (3,)))
         push_f, push_t = jnp.where(start, new, info["push_f"]), jnp.where(start, P["push_n"], info["push_t"] - 1)
         qvel = qvel.at[23 + 6 * ib + jnp.arange(3)].add(start * P["spin"] * jax.random.normal(kp[7], (3,)))
+        c0 = data.ctrl
         data = data.replace(ctrl=ctrl, qvel=qvel)
         g_ou = 0.95 * info["g_ou"] + 0.31 * P["g_jit"] * jax.random.normal(kp[8], (3,))
         f = (push_t > 0) * push_f
@@ -424,19 +491,23 @@ class BaodingNoisyEnv(Env):
             f = f + mdl.body_mass[:, None] * (9.81 * self.R @ (g / jnp.linalg.norm(g)) - self.g_world)
         if self.tilt_max is not None or self.xf:
             data = data.replace(xfrc_applied=jnp.concatenate([f, jnp.zeros_like(f)], 1))
-        data = jax.lax.fori_loop(0, self.n_frames, lambda _, d: mjx.step(mdl, d), data)
+        if self.ramp:  # the real controller interpolates to each new target over one control step
+            sub = lambda i, d: mjx.step(mdl, d.replace(ctrl=c0 + (i + 1) / self.n_frames * (ctrl - c0)))
+        else:
+            sub = lambda _, d: mjx.step(mdl, d)
+        data = jax.lax.fori_loop(0, self.n_frames, sub, data)
 
         cap = info["omega"] * self.ctrl_dt
-        theta = info["theta"] + cap
+        theta = info["theta"] + self.dir * cap
         b = E.balls_hand(data.qpos, self.R, self.o)
-        err = jnp.linalg.norm(b[:, 1:] - E.targets(theta), axis=-1)
+        err = jnp.linalg.norm(b[:, 1:] - self.tg(theta), axis=-1)
         track = jnp.exp(-err / 0.015).sum()
-        if self.rel:  # pair center within 15 mm of the palm center: full reward, decaying outside
-            err = jnp.linalg.norm(b[:, 1:].mean(0) - E.CENTER[1:])
+        if self.rel:  # pair center within 15 mm of the orbit center: full reward, decaying outside
+            err = jnp.linalg.norm(b[:, 1:].mean(0) - self.c)
             track = 2 * jnp.exp(-jnp.maximum(err - 0.015, 0.0) / 0.02)
         pair = E.pair_angle(b)
-        dpair = (pair - info["pair"] + jnp.pi) % (2 * jnp.pi) - jnp.pi
-        dropped = E.dropped_fn(b)
+        dpair = self.dir * ((pair - info["pair"] + jnp.pi) % (2 * jnp.pi) - jnp.pi)  # progress in the task direction
+        dropped = E.dropped_fn(b, self.r)
         # tracking + rotation progress capped at the target pace (faster earns nothing; w_over > 0 penalizes it)
         reward = (track + self.w_turn * jnp.clip(dpair, -0.3, cap)
                   - self.w_over * self.w_turn * jnp.clip(dpair - cap, 0.0, 0.3)

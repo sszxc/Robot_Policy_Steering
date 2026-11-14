@@ -4,6 +4,7 @@ v2 (speed command + MuJoCo Warp): add --periods 2 16 --warp"""
 from platforms.paths import output_path
 import argparse
 import functools
+import json
 import os
 import pickle
 import time
@@ -14,7 +15,7 @@ import numpy as np
 from brax.training.acme import running_statistics
 from brax.training.agents.ppo import networks as ppo_networks, networks_vision, train as ppo
 
-from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv
+from robotics.policies.rl.baoding_noisy_env import BaodingNoisyEnv, add_task_args, task_kw
 
 # brax 0.14.2 still calls this API, removed in jax 0.11
 jax.device_put_replicated = lambda x, devices: jax.tree.map(lambda a: jnp.stack([a] * len(devices)), x)
@@ -69,10 +70,12 @@ if __name__ == "__main__":
     p.add_argument("--rel", action="store_true", help="no orbit tracking: pair-rotation reward, wide start")
     p.add_argument("--pert", nargs="+", default=[], help="extra perturbations, key=value (PERT in baoding_noisy_env)")
     p.add_argument("--restore", help="params .pkl to warm-start from")
+    add_task_args(p)
     a = p.parse_args()
     out = a.out or str(output_path(f"rl/baoding_{'cmd' if a.periods else 'noisy'}/" + ("vision_rl" if a.vision else "teacher")))
     os.makedirs(out, exist_ok=True)
     log = open(os.path.join(out, "log.txt"), "a")
+    json.dump(task_kw(a), open(os.path.join(out, "task.json"), "w"))  # task options of this teacher
     t0 = time.time()
 
     def progress(step, m):
@@ -99,7 +102,7 @@ if __name__ == "__main__":
         restore = pad_critic(restore, 7, (a.periods is not None) + 3 * (tilt is not None))
     env = lambda n: BaodingNoisyEnv(a.period, a.w_turn, render=a.vision, periods=a.periods, warp=a.warp, nworld=n,
                                     w_over=a.w_over, cam=a.cam, tilt_max=tilt, dr=a.dr, tilt_about=a.tilt_about, rel=a.rel,
-                                    pert={k: float(v) for k, v in (x.split("=") for x in a.pert)})
+                                    pert={k: float(v) for k, v in (x.split("=") for x in a.pert)}, **task_kw(a))
     ppo.train(
         environment=env(kw["num_envs"]), eval_env=env(kw["num_eval_envs"]), num_timesteps=a.steps, num_evals=a.evals, episode_length=400,
         num_updates_per_batch=4, discounting=0.99, learning_rate=3e-4, entropy_cost=1e-2, reward_scaling=0.1,

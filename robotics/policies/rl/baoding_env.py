@@ -17,9 +17,9 @@ RADIUS = 0.022                           # ball0 starts at orbit angle 0 (+y sid
 PALM_X = 0.021                                            # palm surface height in the hand frame
 
 
-def build_model(sim_dt=0.005):
+def build_model(sim_dt=0.005, r=B.R, mass=B.MASS):
     """Hand + balls; hand<->ball, ball<->ball and hand self-collision pairs. Returns (model, R_hand, o_hand)."""
-    spec = B.ball_spec(*TILT, solref=(0.02, 1))
+    spec = B.ball_spec(*TILT, solref=(0.02, 1), r=r, mass=mass)
     scene.add_hand_self_pairs(spec)
     m = spec.compile()
     for g in range(m.ngeom):
@@ -43,25 +43,27 @@ def balls_hand(qpos, R, o):
     return (jnp.stack([qpos[20:23], qpos[27:30]]) - o) @ R
 
 
-def targets(theta):
-    """Target (y, z) of both balls for orbit angle theta; ball1 is opposite ball0."""
+def targets(theta, c=CENTER[1:], rad=RADIUS):
+    """Target (y, z) of both balls for orbit angle theta (orbit center c = (y, z), radius rad); ball1 opposite ball0."""
     ang = jnp.array([theta, theta + jnp.pi])
-    return CENTER[1:] + RADIUS * jnp.stack([jnp.cos(ang), jnp.sin(ang)], -1)
+    return c + rad * jnp.stack([jnp.cos(ang), jnp.sin(ang)], -1)
 
 
 def pair_angle(b):
     return jnp.arctan2(b[1, 2] - b[0, 2], b[1, 1] - b[0, 1])
 
 
-def observe(qpos, qvel, ctrl, theta, R, o):
+def observe(qpos, qvel, ctrl, theta, R, o, tg=None):
+    """Positions relative to the fixed reference CENTER; tg = target (y, z) of both balls (default: targets(theta))."""
     b = balls_hand(qpos, R, o)
     v = jnp.stack([qvel[20:23], qvel[26:29]]) @ R
+    tg = targets(theta) if tg is None else tg
     return jnp.concatenate([qpos[:20], 0.1 * qvel[:20], ctrl, 10 * (b - CENTER).ravel(), v.ravel(),
-                            10 * (targets(theta) - CENTER[1:]).ravel(), jnp.array([jnp.sin(theta), jnp.cos(theta)])])
+                            10 * (tg - CENTER[1:]).ravel(), jnp.array([jnp.sin(theta), jnp.cos(theta)])])
 
 
-def dropped_fn(b):
-    return ((b[:, 0] < PALM_X) | (b[:, 0] > PALM_X + B.R + 0.015) | (jnp.abs(b[:, 1]) > 0.09)
+def dropped_fn(b, r=B.R):
+    return ((b[:, 0] < PALM_X) | (b[:, 0] > PALM_X + r + 0.015) | (jnp.abs(b[:, 1]) > 0.09)
             | (b[:, 2] < -0.02) | (b[:, 2] > 0.2)).any()
 
 
