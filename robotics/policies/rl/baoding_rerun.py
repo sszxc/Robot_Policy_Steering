@@ -29,7 +29,7 @@ def start(student, name, rrd=None, view=True, raw=False):
         cams.insert(0, rrb.Spatial2DView(origin="camera/raw", name="wrist raw"))
     left = rrb.Vertical(rrb.Tabs(*cams),
                         *[rrb.TimeSeriesView(origin=o, name=n) for o, n in
-                          [("balls", "image head: ball y, z (mm from orbit center)"), ("phase", "pair angle (deg)"),
+                          [("balls", "image head: ball y, z (mm from the 40 mm orbit center)"), ("phase", "pair angle (deg)"),
                            ("timing", "timing (ms)")]], row_shares=[3, 2, 2, 1])
     rr.send_blueprint(rrb.Blueprint(rrb.Horizontal(left, rrb.Grid(*plots, grid_columns=5), column_shares=[1, 3]),
                                     collapse_panels=True))

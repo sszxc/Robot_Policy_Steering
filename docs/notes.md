@@ -569,3 +569,25 @@ touches a ball (`--contacts`, CPU replay of 32 episodes). Repeats of the random 
 - Looks (video frames, T = 8 s): the DR teacher keeps the thumb folded back at the wrist; at 46 mm it lies along the
   thumb-side ball as a guide; at 52 mm it wraps around the side and over the balls.
 - Decision: final = forward, 52 mm (most thumb, nominal performance intact), + route A.
+
+### Stage 2: final teacher and student (`pipeline10.sh`)
+- `teacher_f52a`: fwd 52 mm + `--ramp --windup 0.3`, warm start from `teacher_f52`, 200M steps (45 min).
+  `dagger_f52a`: ssm3 student as `dagger_ssm3_img2` (DR + visual DR + background composite, 10 iterations, 34 min).
+
+| policy | random: pace% / drop / thumb | nominal T = 4 s: pace% / drop / thumb | nominal T = 8 s |
+|---|---|---|---|
+| teacher fwd 52 (no route A) | 54 / 0.46 / 0.82 | 98 / 0.02 / 0.76 | 99 / 0.01 / 0.80 |
+| teacher fwd 52 + route A | 50 / 0.50 / 0.79 | 98 / 0.02 / 0.74 | 98 / 0.02 / 0.75 |
+| … ball mass × 0.75 / × 1.35 | – | 99 / 0.01, 98 / 0.02 | 99 / 0.02, 97 / 0.03 |
+| student (+ visual DR), 10 iterations | 40 / 0.59 / 0.77 | 94 / 0.05 / 0.73 | 98 / 0.02 / 0.75 |
+| student, frozen pixels | – | 36 / 0.48 | 32 / 0.31 |
+
+- Conclusion 3: route A costs ≤ 4 points off-nominal and nothing at nominal; |target − q| p99 drops from 0.29–0.72 to
+  0.26–0.33 rad (nominal, T = 4 s). Ball mass 12.7–22.8 g makes no difference: print 52 mm balls, weigh, no retrain.
+- Thumb posture vs the real blocked region (j2 > −0.4 and j1 < −0.6, where the real j1 stopped at −0.48): DR teacher
+  95% of steps, 52 mm teachers 0% (thumb j2 ≈ −1.2, j3 ≈ 1.45: the thumb is rotated in front of the palm instead).
+- Student: 4 points behind the teacher at nominal T = 4 s; the 52 mm episodes drop more under random tilt, so DAgger
+  collected 190k samples (`dagger_ssm3_img2`: 387k) → longer run, stage 3.
+- Thumb-contact reward (`--w_thumb 1`, fwd 40 mm, 250M steps, same protocol as stage 1): no effect (random 84 / 0.15 /
+  thumb 0.07, nominal thumb 0.00 / 0.03). The reward pays only on touching and the warm-started policy never touches;
+  a dense distance term would be the next try if 40 mm balls must stay.

@@ -84,7 +84,7 @@ def step(o, s):
         b = infer(pix, mean)[1]
         s["theta"] = a.theta0 if a.theta0 is not None else float(np.arctan2(b[0, 2] - b[1, 2], b[0, 1] - b[1, 1]))
         print(f"start phase {np.degrees(s['theta']):.0f} deg; image head (y, z mm from the orbit center): white "
-              f"{(1e3 * (b[0] - E.CENTER)[1:]).round()}, yellow {(1e3 * (b[1] - E.CENTER)[1:]).round()}", flush=True)
+              f"{(1e3 * (b[0, 1:] - orbit_c)).round()}, yellow {(1e3 * (b[1, 1:] - orbit_c)).round()}", flush=True)
     else:
         s["theta"] += sgn * omega * DT
     cs, sn = np.cos(s["theta"]), np.sin(s["theta"])
