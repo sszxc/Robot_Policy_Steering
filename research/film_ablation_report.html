@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FiLM Dim and Layers</title>
+<script src="plotly.min.js"></script>
+<style>
+:root { --bg:#fcfcfb; --fg:#1b1b1a; --muted:#5f5e5a; --line:#e4e3df; --code:#f1f0ec; --acc:#2a78d6; --card:#ffffff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; } }
+:root[data-theme="dark"] { --bg:#161615; --fg:#e8e7e3; --muted:#a3a29d; --line:#33322f; --code:#22211f; --acc:#7fb0ef; }
+body { background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  max-width:1100px; margin:0 auto; padding:24px 16px 64px; }
+h1 { font-size:1.6em; margin-bottom:.3em; } h2 { font-size:1.2em; margin-top:2em; border-bottom:1px solid var(--line); padding-bottom:.2em; }
+a { color:var(--acc); } code { background:var(--code); padding:1px 4px; border-radius:3px; font-size:.9em; }
+table { border-collapse:collapse; margin:.8em 0; font-size:.85em; display:block; overflow-x:auto; }
+th, td { border:1px solid var(--line); padding:3px 7px; text-align:left; white-space:nowrap; }
+th { background:var(--code); }
+figure { margin:1.4em 0; } figure > div { background:#fff; border-radius:4px; overflow-x:auto; }
+figcaption { color:var(--muted); font-size:.87em; margin-top:.4em; }
+pre.vlm { background:var(--code); padding:.6em .9em; border-radius:4px; white-space:pre-wrap; font-size:.85em; }
+.key { border-left:3px solid var(--acc); padding:.2em .9em; margin:1em 0; }
+</style></head><body>
+<h1>FiLM ablation on SmolVLA: z dimension, layer position and layer count (LIBERO-Object)</h1>
+<p>Follow-up to <a href="smolvla_film_split_object.html">coupled vs split FiLM</a>. Which FiLM placement and how many z
+dimensions give the most usable control space, measured by closed-loop axis grids and held-out re-runs of the best grid z.
+No CEM in this round.</p>
+
+<h2>Setup</h2>
+<ul>
+<li><b>Injection</b> (all variants): split FiLM with γ on normalized x, on the action-expert MLP outputs x of the chosen layers:
+  x' = x + γ ⊙ x̂ + β, x̂ = per-sample, per-channel InstanceNorm over the 50 action tokens; γ = α·W<sub>γ</sub>·z[0:d/2],
+  β = α·W<sub>β</sub>·z[d/2:d], each block Gaussian / √(d/2). Same γ, β for all tokens and all 10 denoising steps.</li>
+<li><b>W bank</b>: every layer has fixed γ and β columns (8 each, seed 0), whatever the layer set or d; d = 2k uses the
+  first k of each. A layer shared by two variants has the same W in both, and the W of the reference R′ (layers 7, 15, 23, 31,
+  d = 8) is bit-identical to film_split's, so its grids and picks are reused.</li>
+<li><b>Axis names</b>: γ axes 0–7, β axes 8–15 (d16 order). R′ and every layer variant have γ 0–3 and β 8–11.</li>
+<li><b>Strength</b>: parameter-space parity. Along an axis z = c·√d·e_k, every γ or β entry has sd α·c·√2 for any d. Across
+  layer counts the total energy is held: α = 0.3·√(4/L) (1 layer 0.6, 2 layers 0.42, 4 layers 0.3, 16 layers 0.15).
+  The open-loop gain is measured for each variant but not used to tune α; the last figure re-plots success against it.</li>
+<li><b>Layer variants</b> (cross-attention layers only, i.e. odd layers; even layers are joint self-attention):
+<table><tr><th>layers</th><th>front</th><th>mid</th><th>late</th><th>spread</th></tr>
+<tr><td>1 (α 0.6)</td><td>3</td><td>15</td><td>27</td><td>31</td></tr>
+<tr><td>2 (α 0.42)</td><td>3, 5</td><td>15, 17</td><td>27, 29</td><td>15, 31</td></tr>
+<tr><td>4 (α 0.3)</td><td>1, 3, 5, 7</td><td>13, 15, 17, 19</td><td>25, 27, 29, 31</td><td>7, 15, 23, 31 (R′)</td></tr>
+<tr><td>16 (α 0.15)</td><td></td><td></td><td></td><td>1, 3, …, 31</td></tr></table></li>
+<li><b>z dimension</b>: on R′ layers, one d = 16 grid (R′'s 8 axes + 8 new). With the nested W, axis k is the same vector in
+  γ/β space for every d, so d = 2k is the first k γ and first k β axes of that grid.</li>
+<li><b>Closed-loop grid</b> (<code>research/run.py</code>): t0 and t7, every axis at c ∈ {±0.5, ±1, ±2}, inits 0–7, one episode
+  each, flow noise paired by init (every grid's z = 0 episodes are bitwise identical). <b>Held-out</b>: the best γ cell and the
+  best β cell of each variant (and of each d subset) on inits 10–39 × 2 reps (n = 60), paired with the ticket round's z = 0.</li>
+<li><b>2-D grid</b>: in the plane of the best γ and best β axis of the d = 16 grid, a, b ∈ {±0.5, ±1}.</li>
+<li>Machine: local RTX 4090 laptop, B = 12 envs, as film_split. Queue <code>experiments/libero/film_ablation/local.sh</code>,
+  figures <code>research/plot_film_ablation.py</code>.</li>
+</ul>
+
+<h2>Takeaways</h2>
+<!--takeaways-->
+
+<h2>Open loop</h2>
+<figure><!--fig:openloop--><figcaption>RMS change of the first action (normalized units; with n_action_steps = 1 it is the
+executed action) at c = 1, mean over the variant's 4 γ (solid) or 4 β (dashed) axes; dotted line = action sd from resampling
+flow noise at z = 0.</figcaption></figure>
+
+<h2>z dimension</h2>
+<figure><!--fig:dim--><figcaption>R′ layers. Dotted: best grid cell among the first k axes of a type. Dashed: the same best,
+averaged over every k-subset of the 8 axes (less dependent on which axes come first). Solid: held-out of the first-k pick
+(95% CI).</figcaption></figure>
+<!--fig:tab_dim-->
+
+<h2>Layer position × count</h2>
+<figure><!--fig:dose--><figcaption>Grid success vs c, mean over the 4 axes of a type; one line per layer count (marker shape),
+one panel per position. Buttons select the task.</figcaption></figure>
+<figure><!--fig:mean05--><figcaption>Mean grid success over all 8 axes at c = ±0.5 (the usable dose in earlier rounds);
+dotted line = z = 0 on the same inits.</figcaption></figure>
+<figure><!--fig:heldfac--><figcaption>Held-out success (n = 60, Wilson 95% CI) of the best γ cell and the best β cell of each
+variant; dotted line = z = 0 held-out. Hover shows the pick and wins/losses vs z = 0.</figcaption></figure>
+<!--fig:tab_variants-->
+
+<h2>2-D grid: γ and β together</h2>
+<figure><!--fig:combo--><figcaption>Rows: c on the best β axis; columns: c on the best γ axis. The middle row and column are
+the single-axis grid cells, the centre is z = 0.</figcaption></figure>
+
+<h2>Step size check</h2>
+<figure><!--fig:gain_success--><figcaption>For each variant, grid success at |c| = 0.5, 1, 2 (mean over axes and both signs)
+against the open-loop action change measured at the same |c|; the first point is z = 0. If variants differ only through
+step size, their curves overlap here.</figcaption></figure>
+</body></html>
