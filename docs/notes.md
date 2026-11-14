@@ -517,3 +517,55 @@ DR teacher / `dagger_ssm3_img2`, tilt + DR + visual DR, 2 × 128 episodes, pace%
   Tracking students need the target phase set from the observed pair angle at the start.
 - Open: students under joint zero offset; rate / force limits and ball radius as per-episode DR once the real
   hand's numbers are known; the JAX-vs-Warp gap.
+
+## Baoding v6: thumb engagement, real-hand stuck states (2026-11-14; `out/rl/baoding_real/`, chain `pipeline8.sh`)
+Goal (user): a thumb that takes part (mainly looks / human-likeness, secondarily robustness), and a fix for the
+stuck states seen on the real hand (route A: train and deploy with the same target dynamics).
+
+### Stage 0: diagnosis from the first real closed loop (2026-11-13, T = 4 s) and code
+- Thumb unused already in sim: ball-contact fraction thumb / index / middle / ring / pinky = 0.01 / 0.55 / 0.91 /
+  0.91 / 0.63 (DR teacher, T = 4 s, tilt + DR; students 0.02–0.07 for the thumb). Not a reach limit: the thumb can
+  touch a ball anywhere on the orbit (11–28% of random thumb poses). Likely cause: with fingers 17° downhill the
+  thumb-side arc (wrist → thumb side → fingertips) runs downhill and gravity does the work; the uphill half
+  (fingertips → pinky side → wrist) is ring / pinky work. Reversing the direction makes the thumb side uphill.
+- Real thumb blocked: with j2 ≈ 0, j1 stops at ≈ −0.48 while commanded −1.57 (23% of those steps; 30 s in
+  `141423`); sim p99 of that gap 0.07. Cause unknown (balls or hand geometry vs the collision primitives).
+- Stuck states = integrator windup: target = last target + 0.15·a, fingers blocked by the balls → target runs away.
+  Real |target − q| ≈ 2× sim (index / middle median 0.21 vs 0.12 rad, p99 0.6–0.7 vs 0.35–0.46); `dagger_rel_p`
+  stuck with the index 0.53 rad short all episode. hand_node interpolates each target over 50 ms, the sim steps it.
+  A deploy-only clip to q ± δ does not work alone: δ = 0.5 clips 0.5–2% of sim steps but misses the stuck gaps
+  (0.3–0.56); δ = 0.3 catches them but clips 11–36% of sim steps. → `--ramp` (targets interpolated over the control
+  step) + `--windup 0.3` in training and in `baoding_server`.
+- Ball size: `geometry(d)` keeps the wrist-side ball edge ≥ 40 mm from the hand origin (orbit center z = max(86,
+  42 + d) mm; 40 mm unchanged), `start_pose(d)` opens the fingers until balls anywhere on the orbit overlap the hand
+  ≤ 1.5 mm (40 mm: DEFAULT_POSE, 1.1 mm). Holdable with the hand still (nominal tilt, 64 episodes, 5 s, drop):
+  40 mm 0.06, 50 mm 0.09, 52 mm 0.22, 54 mm 0.59, 55 mm 1.00 (flat start fingers, balls roll off the fingertips);
+  60 mm overlaps even flat fingers. Ball stays inside the 88 px image up to 55 mm. Mass assumed 10 g × (d / 40)²
+  (PLA shell): 46 mm 13.2 g, 52 mm 16.9 g; solid-sphere inertia as before.
+- Warp physics is not bit-reproducible run to run (4e-5 after one step); the 40 mm default reproduces the old
+  rollout statistics exactly (DR teacher, 64 episodes: pace 0.86, drop 0.14).
+- `baoding_rerun`: raw 640×480 wrist frame (JPEG, ~1.6 ms) next to the policy input; only in Rerun / `.rrd`.
+
+### Stage 1: direction × ball size (`pipeline8.sh`; teachers only, warm start from the DR teacher, 250M steps, 50 min each)
+Same flags as the DR teacher (tilt 35° about nominal, DR, `--w_over 1`); evals: random = training distribution
+(2 × 128 episodes, mean), nominal = 17° fingers downhill + DR (128 episodes). Thumb = share of steps the thumb
+touches a ball (`--contacts`, CPU replay of 32 episodes). Repeats of the random eval differ by up to ±6 points.
+
+| teacher | random: pace% / drop / thumb | nominal T = 4 s: pace% / drop / thumb · index · middle · ring · pinky | nominal T = 8 s: pace% / drop / thumb |
+|---|---|---|---|
+| baseline (DR teacher) | 84 / 0.14 / 0.06 | 100 / 0.00 / 0.00 · 0.56 · 0.94 · 0.93 · 0.59 | 100 / 0.00 / 0.01 |
+| fwd 40 (control, +250M) | 84 / 0.15 / 0.07 | 100 / 0.00 / 0.00 · 0.61 · 0.94 · 0.91 · 0.61 | 100 / 0.00 / 0.04 |
+| rev 40 | 82 / 0.15 / 0.01 | 100 / 0.00 / 0.00 · 0.87 · 0.52 · 0.91 · 0.81 | 100 / 0.00 / 0.00 |
+| fwd 46 | 73 / 0.26 / 0.38 | 100 / 0.00 / 0.22 · 0.61 · 0.97 · 0.93 · 0.73 | 100 / 0.00 / 0.46 |
+| rev 46 | 70 / 0.29 / 0.38 | 100 / 0.00 / 0.17 · 0.88 · 0.72 · 0.96 · 0.44 | 100 / 0.00 / 0.49 |
+| fwd 52 | 54 / 0.46 / 0.82 | 98 / 0.02 / 0.76 · 0.57 · 0.92 · 0.97 · 0.74 | 99 / 0.01 / 0.80 |
+| rev 52 | 52 / 0.45 / 0.74 | 99 / 0.01 / 0.54 · 0.76 · 0.61 · 0.84 · 0.32 | 99 / 0.00 / 0.68 |
+
+- Conclusion 1: ball size engages the thumb, direction does not. Reversing at 40 mm hands the thumb-side uphill work
+  to the index (0.56 → 0.87), the thumb stays at 0. The control shows the extra training alone changes nothing.
+- Conclusion 2: the price of size is robustness off-nominal (random tilt: drop 0.14 → 0.26 at 46 mm, 0.46 at 52 mm);
+  at the real nominal tilt all sizes keep ~100% pace with ≤ 0.02 drops. Reverse is equal or slightly worse
+  everywhere (52 mm: thumb 0.54 vs 0.76 at T = 4 s, track error 9.8 vs 4.6 mm).
+- Looks (video frames, T = 8 s): the DR teacher keeps the thumb folded back at the wrist; at 46 mm it lies along the
+  thumb-side ball as a guide; at 52 mm it wraps around the side and over the balls.
+- Decision: final = forward, 52 mm (most thumb, nominal performance intact), + route A.
