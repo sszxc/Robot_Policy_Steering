@@ -16,7 +16,8 @@ start = pair anywhere on the palm (REL_INIT). 'track_err' then reports the pair-
 pert = overrides of PERT (extra perturbations, all off by default; used for sensitivity evals).
 Task options (add_task_args / task_kw, stored with checkpoints): ball_d (m; the orbit follows geometry(), the reset
 pose start_pose()), ball_g, reverse (pair rotates the other way), ramp (targets interpolated over each control step,
-as the real trajectory controller), windup (commanded target kept within +-windup rad of the joint angle).
+as the real trajectory controller), windup (commanded target kept within +-windup rad of the joint angle), w_thumb
+(reward for the thumb's distal links touching a ball; metric 'thumb' = touching, logged always).
 Positions in obs stay relative to the fixed reference E.CENTER."""
 import jax
 import jax.numpy as jnp
@@ -118,10 +119,12 @@ def add_task_args(p):
     p.add_argument("--reverse", action="store_true", help="the pair rotates the other way")
     p.add_argument("--ramp", action="store_true", help="targets interpolated over each control step (real controller)")
     p.add_argument("--windup", type=float, help="anti-windup: commanded target within +-windup rad of the joint angle")
+    p.add_argument("--w_thumb", type=float, default=0.0, help="reward weight: thumb (distal links) touching a ball")
 
 
 def task_kw(a):
-    return dict(ball_d=a.ball_d / 1000, ball_g=a.ball_g, reverse=a.reverse, ramp=a.ramp, windup=a.windup)
+    return dict(ball_d=a.ball_d / 1000, ball_g=a.ball_g, reverse=a.reverse, ramp=a.ramp, windup=a.windup,
+                w_thumb=a.w_thumb)
 
 
 def gravity_dir(th, ph):
@@ -160,13 +163,13 @@ class BaodingNoisyEnv(Env):
                  kick_prob=0.01, kick_std=0.1, periods=None, warp=False, nworld=None, w_over=0.0, cam="top",
                  tilt_max=None, g_obs=None, g_noise=0.03, dr=False, vis_dr=False,
                  tilt_about="up", bg=None, stack=2, pert=None, rel=False, ball_d=0.040, ball_g=None, reverse=False,
-                 ramp=False, windup=None):
+                 ramp=False, windup=None, w_thumb=0.0):
         self.warp, self.cmd, self.rel = warp, periods is not None, rel
         self.r, self.ball_x, c, self.rad = geometry(ball_d)
         self.c = jnp.array(c)
         mass = B.MASS * (ball_d / 0.04) ** 2 if ball_g is None else ball_g / 1000
         self.q0 = jnp.array(start_pose(ball_d))
-        self.dir, self.ramp, self.windup = (-1.0 if reverse else 1.0), ramp, windup
+        self.dir, self.ramp, self.windup, self.w_thumb = (-1.0 if reverse else 1.0), ramp, windup, w_thumb
         self.mj_model, R, o, self.res = (build_model_cam(sim_dt, cam, self.r, mass) if warp
                                          else (*E.build_model(sim_dt, self.r, mass), (BR.RES, BR.RES)))  # res = image (w, h)
         assert not set(pert or {}) - set(PERT), set(pert) - set(PERT)
@@ -178,6 +181,8 @@ class BaodingNoisyEnv(Env):
         self.hand_geoms = np.array([g for g in range(m.ngeom) if col[g] and not names[g].startswith(("ball", "world"))])
         self.ball_bodies = np.array([m.body("ball0").id, m.body("ball1").id])
         self.link_bodies = np.array([b for b in range(m.nbody) if m.body(b).name.startswith("finger")])
+        self.thumb_g = np.array([g for g in self.hand_geoms if names[g] in ("finger_r_link3", "finger_r_link4")])
+        assert (m.geom_type[self.thumb_g] == mujoco.mjtGeom.mjGEOM_CAPSULE).all()
         finger = np.array([names[g].startswith("finger") for g in self.hand_geoms])
         m.geom_friction[self.hand_geoms[finger], 0] *= P["finger_fric"]
         m.geom_friction[self.hand_geoms[~finger], 0] *= P["palm_fric"]
@@ -240,6 +245,16 @@ class BaodingNoisyEnv(Env):
     @property
     def backend(self):
         return "mjx"
+
+    def _thumb_gap(self, data):
+        """Smallest surface gap (m) between the thumb's distal capsules and either ball."""
+        m, g = self.mj_model, self.thumb_g
+        p, ax = data.geom_xpos[g], data.geom_xmat[g][:, :, 2]
+        rad, hl = jnp.array(m.geom_size[g, 0]), jnp.array(m.geom_size[g, 1])
+        bw = jnp.stack([data.qpos[20:23], data.qpos[27:30]])
+        t = jnp.clip(jnp.einsum("kbi,ki->kb", bw[None] - p[:, None], ax), -hl[:, None], hl[:, None])
+        q = p[:, None] + t[..., None] * ax[:, None]
+        return (jnp.linalg.norm(bw[None] - q, axis=-1) - rad[:, None]).min() - self.r * self.pert["ball_r"]
 
     def tg(self, th):
         return E.targets(th, self.c, self.rad)
@@ -433,7 +448,7 @@ class BaodingNoisyEnv(Env):
         data = mjx.forward(self.mjx_model, data.replace(qpos=qpos, ctrl=qpos[:20]))
         obs, info = self._obs(data, info, jax.random.fold_in(rng, 7), True)
         metrics = {"track_err": jnp.zeros(()), "turn": jnp.zeros(()), "dropped": jnp.zeros(()),
-                   "pace": jnp.zeros(())}
+                   "pace": jnp.zeros(()), "thumb": jnp.zeros(())}
         return State(data, obs, jnp.zeros(()), jnp.zeros(()), metrics, info)
 
     def step(self, state, action):
@@ -509,15 +524,16 @@ class BaodingNoisyEnv(Env):
         dpair = self.dir * ((pair - info["pair"] + jnp.pi) % (2 * jnp.pi) - jnp.pi)  # progress in the task direction
         dropped = E.dropped_fn(b, self.r)
         # tracking + rotation progress capped at the target pace (faster earns nothing; w_over > 0 penalizes it)
+        thumb = self._thumb_gap(data) < 0.001
         reward = (track + self.w_turn * jnp.clip(dpair, -0.3, cap)
                   - self.w_over * self.w_turn * jnp.clip(dpair - cap, 0.0, 0.3)
-                  - 0.001 * jnp.sum(action ** 2) - 50.0 * dropped)
+                  - 0.001 * jnp.sum(action ** 2) - 50.0 * dropped + self.w_thumb * thumb)
 
         info = {**info, "rng": rng, "theta": theta, "pair": pair, "turn": info["turn"] + dpair,
                 "abuf": jnp.stack([act, ab[0]]), "ctrl": cmd, "push_f": push_f, "push_t": push_t, "g_ou": g_ou}
         obs, info = self._obs(data, info, k_obs, fresh)
         metrics = {**state.metrics, "track_err": err.mean(), "turn": dpair, "dropped": dropped.astype(jnp.float32),
-                   "pace": dpair / cap}
+                   "pace": dpair / cap, "thumb": thumb.astype(jnp.float32)}
         nan = jnp.isnan(data.qpos).any() | jnp.isnan(data.qvel).any()
         done = (dropped | nan).astype(jnp.float32)
         return state.replace(pipeline_state=data, obs=obs, reward=jnp.where(nan, 0.0, reward), done=done,

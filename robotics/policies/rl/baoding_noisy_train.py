@@ -82,7 +82,8 @@ if __name__ == "__main__":
         n = max(m["eval/avg_episode_length"], 1)
         line = (f"{time.time() - t0:7.0f}s step {step:>11,d}  reward {m['eval/episode_reward']:9.1f}  "
                 f"turn {m['eval/episode_turn']:6.2f} rad  track_err {1000 * m['eval/episode_track_err'] / n:5.1f} mm  "
-                f"pace {100 * m['eval/episode_pace'] / n:4.0f}%  drop {m['eval/episode_dropped']:.2f}  len {n:.0f}")
+                f"pace {100 * m['eval/episode_pace'] / n:4.0f}%  drop {m['eval/episode_dropped']:.2f}  len {n:.0f}"
+                f"  thumb {m.get('eval/episode_thumb', 0) / n:.2f}")
         print(line, flush=True)
         log.write(line + "\n")
         log.flush()
