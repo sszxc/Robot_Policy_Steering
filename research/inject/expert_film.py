@@ -5,10 +5,22 @@ Hooks fire only in denoising (prefix prefill skips the expert); all steps share 
 """
 import torch
 
+OLD = (7, 15, 23, 31)
+
+
+def split_bank(n_layers, H, g):
+    """{layer: (γ cols, β cols)}, each [H, 8] N(0,1), fixed per layer whatever the layer set; d = 2k uses the first k.
+    Draw order keeps the pre-bank W of layers 7, 15, 23, 31 at d = 8 bit-exact."""
+    order = list(OLD) + [l for l in range(n_layers) if l not in OLD]
+    first = {l: (torch.randn(H, 4, generator=g), torch.randn(H, 4, generator=g)) for l in order}
+    return {l: (torch.cat([first[l][0], torch.randn(H, 4, generator=g)], 1),
+                torch.cat([first[l][1], torch.randn(H, 4, generator=g)], 1)) for l in order}
+
 
 def attach(policy, layers, dim, alpha, w="random", seed=0, center=None):
     """w: "random" (coupled: Gaussian / √dim, every z_i drives γ and β), "split" (z[:dim/2] -> γ, z[dim/2:] -> β,
-    each block / √its width, so per-entry scale matches "random") or a fit_pca.py file (β = Σ z_i √λ_i u_i, γ = 0).
+    each block / √its width, so per-entry scale matches "random"; columns from split_bank, nested in dim and layer set)
+    or a fit_pca.py file (β = Σ z_i √λ_i u_i, γ = 0).
     center: γ acts on x̂ = (x − μ)/σ instead of x, i.e. mlp' = mlp + γ⊙x̂ + β. "token" = per sample and channel over
     the action tokens (InstanceNorm); a pool_stats.py file = fixed per-channel mean/var (BatchNorm running stats)."""
     expert = policy.model.vlm_with_expert.lm_expert
@@ -19,8 +31,9 @@ def attach(policy, layers, dim, alpha, w="random", seed=0, center=None):
         W = {l: torch.randn(2 * H, dim, generator=g) / dim**0.5 for l in layers}
     elif w == "split":
         k = dim // 2
-        W = {l: torch.block_diag(torch.randn(H, k, generator=g) / k**0.5,
-                                 torch.randn(H, dim - k, generator=g) / (dim - k)**0.5) for l in layers}
+        assert dim % 2 == 0 and k <= 8, "split: even dim ≤ 16"
+        bank = split_bank(len(expert.layers), H, g)
+        W = {l: torch.block_diag(bank[l][0][:, :k] / k**0.5, bank[l][1][:, :k] / k**0.5) for l in layers}
     else:
         pca = torch.load(w)["layers"]
         W = {l: torch.cat([torch.zeros(H, dim), pca[l]["eigvecs"][:, :dim] * pca[l]["eigvals"][:dim].sqrt()])
