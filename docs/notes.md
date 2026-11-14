@@ -591,3 +591,23 @@ touches a ball (`--contacts`, CPU replay of 32 episodes). Repeats of the random 
 - Thumb-contact reward (`--w_thumb 1`, fwd 40 mm, 250M steps, same protocol as stage 1): no effect (random 84 / 0.15 /
   thumb 0.07, nominal thumb 0.00 / 0.03). The reward pays only on touching and the warm-started policy never touches;
   a dense distance term would be the next try if 40 mm balls must stay.
+
+### Stage 3: longer DAgger for the final student (`pipeline11.sh`)
+- `dagger_f52a16`: same as `dagger_f52a` with 16 iterations (55 min, 326k samples).
+
+| student | nominal T = 4 s: pace% / drop / thumb | nominal T = 8 s | random (tilt + DR + visual DR) |
+|---|---|---|---|
+| 10 iterations (`dagger_f52a`) | 94 / 0.05 / 0.73 | 98 / 0.02 / 0.75 | 40 / 0.59 / 0.77 |
+| 16 iterations (`dagger_f52a16`) | 98 / 0.02 / 0.73 | 96 / 0.04 / 0.74 | 44 / 0.55 / 0.77 |
+| teacher (`teacher_f52a`), same episodes | 98 / 0.02 / 0.75 | 98 / 0.02 / 0.75 | 48 / 0.51 / 0.79 |
+
+- Conclusion 4: the student now matches the teacher at nominal T = 4 s (T = 8 s: 5 vs 3 drops of 128, noise level)
+  and is 4 points behind off-nominal (10 iterations: 9). Frozen pixels: 35–40% pace → it uses the image.
+- Real-test checkpoint: `out/rl/baoding_real/dagger_f52a16/student.pkl` (tracking, forward, 52 mm, route A).
+  `baoding_server` reads the task from the checkpoint: 52 mm orbit (center z 94 mm), start pose with the fingers
+  opened (index mcp 0.48), target within ±0.3 rad of the measured joint angle. Needs 52 mm white + yellow balls;
+  any mass in 12.7–22.8 g. The image head has never seen real 52 mm balls (no `--check` frames yet).
+- Report with video frames: `docs/results/baoding_thumb.html`.
+- Open: real-hand check of the thumb (the 52 mm thumb posture avoids the region where the real j1 stopped, but the
+  cause of that stop is unknown); off-nominal robustness of the 52 mm policies (random tilt drop ~0.5); a dense
+  thumb term if 40 mm balls must stay.
