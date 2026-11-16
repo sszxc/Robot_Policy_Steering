@@ -1,11 +1,11 @@
-"""Figures + tables for docs/results/smolvla_film_ablation_object.html: FiLM z dim and layer position × count ablation.
+"""Figures + tables for docs/results/smolvla_film_ablation.html: FiLM z dim and layer position × count ablation.
 
 G = experiments/libero/film_ablation/local.sh outputs, F = film_split outputs (R′ d8 grids), T = research.ticket root (z=0 held-out)
 for object t0/t7; --l10 = sol.sh root for libero_10 tasks. Axes are d16 split names: γ 0-7, β 8-15 (R′ d8 = γ 0-3, β 8-11).
 Variant keys: {f,m,l,s}{#layers}; s4 = R′.
 python -m research.plot_film_ablation out/libero/smolvla/film_ablation out/libero/smolvla/film_split out/ticket-local \
-    [--l10 out/libero/smolvla/film_ablation_10 --l10-tasks 6,8] --out out/film-ablation-figs \
-    --template research/film_ablation_report.html --page docs/results/smolvla_film_ablation_object.html
+    [--l10 out/libero/smolvla/film_ablation_10 --l10-tasks 1,2,6,9] --out out/film-ablation-figs \
+    --template research/film_ablation_report.html --page docs/results/smolvla_film_ablation.html
 """
 import argparse
 import itertools
@@ -33,6 +33,22 @@ SYMBOL = {1: "circle", 2: "square", 4: "diamond", 16: "triangle-up"}
 
 def layout(fig, **kw):
     fig.update_layout(**{**pt.LAYOUT, **kw})
+
+
+def task_fig(sub=("",), **kw):
+    """Subplots with one panel per task (× one row per entry of sub), 3 tasks per row.
+    Returns fig, pos(i, k) -> (row, col), number of rows."""
+    nr, nc = -(-len(TASKS) // 3), min(3, len(TASKS))
+    titles = [TASKS[i][0] + s if i < len(TASKS) else "" for r in range(nr) for s in sub for i in range(3 * r, 3 * r + nc)]
+    R = nr * len(sub)
+    fig = make_subplots(R, nc, subplot_titles=titles, **{"vertical_spacing": 0.3 / R, **kw})
+    return fig, lambda i, k=0: (i // 3 * len(sub) + k + 1, i % 3 + 1), R
+
+
+def tlayout(fig, rows, per_row, **kw):
+    """layout() for task_fig figures: room for the title above and the legend below the last row."""
+    h = per_row * rows + 160
+    layout(fig, **{"height": h, "margin": dict(l=60, r=20, t=100, b=60), "legend": dict(orientation="h", y=-75 / (h - 160)), **kw})
 
 
 def variants():
@@ -163,9 +179,9 @@ def held_stats(h, z):
 
 def fig_openloop(out, rep):
     """First-action RMS Δa at c = 1 per variant: x = #layers, one line per position, γ solid / β dashed."""
-    fig = make_subplots(1, len(TASKS), subplot_titles=[x[0] for x in TASKS], shared_yaxes=True)
-    for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
-        nsd = None
+    fig, pos, R = task_fig(shared_yaxes=True)
+    for i, (lab, G, F, T, t) in enumerate(TASKS):
+        (row, col), nsd = pos(i), None
         for p in POS:
             for ty, (axes, dash) in TYPE.items():
                 xs, ys = [], []
@@ -177,14 +193,16 @@ def fig_openloop(out, rep):
                         rep.setdefault("openloop", {}).setdefault(lab, {}).setdefault(v, {})[ty] = round(ys[-1], 4)
                 if xs:
                     fig.add_scatter(x=xs, y=ys, mode="lines+markers", line=dict(color=COLOR[p], width=2, dash=dash),
-                                    marker=dict(size=8), name=f"{p}, {ty} axes", legendgroup=f"{p}{ty}", showlegend=col == 1,
-                                    row=1, col=col, hovertemplate=f"{p} %{{x}} layers, {ty}: RMS Δa0 %{{y:.3f}}<extra></extra>")
+                                    marker=dict(size=8), name=f"{p}, {ty} axes", legendgroup=f"{p}{ty}", showlegend=i == 0,
+                                    row=row, col=col, hovertemplate=f"{p} %{{x}} layers, {ty}: RMS Δa0 %{{y:.3f}}<extra></extra>")
         if nsd:
-            fig.add_hline(y=nsd, line=dict(color=ZERO, dash="dot"), row=1, col=col,
+            fig.add_hline(y=nsd, line=dict(color=ZERO, dash="dot"), row=row, col=col,
                           annotation_text="flow-noise sd at z=0", annotation_position="top left")
     fig.update_xaxes(title_text="FiLM layers", type="category", categoryorder="array", categoryarray=[str(n) for n in COUNTS])
-    fig.update_yaxes(title_text="RMS Δa of first action at c = 1", rangemode="tozero", row=1, col=1)
-    layout(fig, height=420, title="Open loop: action change per axis at c = 1 (96 saved inputs, fixed flow noise)")
+    fig.update_yaxes(rangemode="tozero", matches="y")
+    fig.update_yaxes(title_text="RMS Δa0 at c = 1", col=1)
+    tlayout(fig, R, 300,
+            title="Open loop: action change per axis at c = 1 (96 saved inputs, fixed flow noise)")
     pt.save(fig, out, "openloop")
 
 
@@ -225,13 +243,11 @@ def fig_factorial(out, rep):
     for name, title in (("mean05", "Grid: mean success over all 8 axes at c = ±0.5"),
                         ("heldfac", "Held-out success of the best γ pick and the best β pick (n = 60, 95% CI)")):
         rows = ("γ", "β") if name == "heldfac" else ("all",)
-        fig = make_subplots(len(rows), len(TASKS), subplot_titles=[f"{x[0]}, {r} pick" if name == "heldfac" else x[0]
-                                                                    for r in rows for x in TASKS],
-                            shared_xaxes=True, shared_yaxes=True, vertical_spacing=0.12)
-        for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
+        fig, pos, R = task_fig([f", {r} pick" for r in rows] if name == "heldfac" else ("",), shared_yaxes=True)
+        for i, (lab, G, F, T, t) in enumerate(TASKS):
             z = zero(G, T, t)
-            for row, ty in enumerate(rows, 1):
-                ref = None
+            for k, ty in enumerate(rows):
+                (row, col), ref = pos(i, k), None
                 for p in POS:
                     xs, ys, lo, hi, tips = [], [], [], [], []
                     for pp, n, v in variants():
@@ -255,27 +271,27 @@ def fig_factorial(out, rep):
                         fig.add_scatter(x=xs, y=ys, error_y=dict(type="data", symmetric=False, array=np.subtract(hi, ys),
                                                                  arrayminus=np.subtract(ys, lo), visible=name == "heldfac"),
                                         mode="lines+markers", line=dict(color=COLOR[p], width=2), marker=dict(size=9),
-                                        name=p, legendgroup=p, showlegend=row == col == 1, row=row, col=col, text=tips,
+                                        name=p, legendgroup=p, showlegend=i == k == 0, row=row, col=col, text=tips,
                                         hovertemplate="%{text}: %{y:.2f}<extra></extra>")
                         rep.setdefault(name, {}).setdefault(lab, {}).setdefault(ty, {})[p] = dict(zip(xs, np.round(ys, 3).tolist()))
                 ref = z["rate"] if name == "heldfac" and z else ref
                 if ref is not None:
                     fig.add_hline(y=ref, line=dict(color=ZERO, dash="dot"), row=row, col=col,
                                   annotation_text="z = 0", annotation_position="bottom right")
-        fig.update_xaxes(title_text="FiLM layers", type="category", categoryorder="array",
-                         categoryarray=[str(n) for n in COUNTS], row=len(rows))
+        fig.update_xaxes(title_text="FiLM layers", type="category", categoryorder="array", categoryarray=[str(n) for n in COUNTS])
         fig.update_yaxes(range=[-0.05, 1.05])
-        layout(fig, height=330 * len(rows) + 90, title=title)
+        tlayout(fig, R, 280, title=title)
         pt.save(fig, out, name)
 
 
 def fig_dim(out, rep):
     """d ablation on R′ layers: k axes per type (d = 2k). Grid best of the first k axes, mean best of every k-subset of the
     8 axes, and held-out of the first-k pick."""
-    fig = make_subplots(1, len(TASKS), subplot_titles=[x[0] for x in TASKS], shared_yaxes=True)
+    fig, pos, R = task_fig(shared_yaxes=True)
     K = (1, 2, 4, 8)
     sub = {1: "d1", 2: "d4", 4: "d8", 8: "d16"}
-    for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
+    for i, (lab, G, F, T, t) in enumerate(TASKS):
+        row, col = pos(i)
         g = grid_cells(G, F, t, "d16")
         z = zero(G, T, t)
         for ty, (axes, dash) in TYPE.items():
@@ -286,10 +302,10 @@ def fig_dim(out, rep):
                 first = [max(best[a] for a in order[:k]) for k in K]
                 mean = [np.mean([max(best[a] for a in s) for s in itertools.combinations(order, k)]) for k in K]
                 fig.add_scatter(x=list(K), y=first, mode="lines+markers", line=dict(color=color, width=2, dash="dot"),
-                                marker=dict(size=8), name=f"{ty}: grid best of first k axes", row=1, col=col, showlegend=col == 1,
+                                marker=dict(size=8), name=f"{ty}: grid best of first k axes", row=row, col=col, showlegend=i == 0,
                                 legendgroup=f"{ty}g", hovertemplate=f"{ty} k=%{{x}}: grid best %{{y:.2f}}<extra></extra>")
                 fig.add_scatter(x=list(K), y=mean, mode="lines", line=dict(color=color, width=1, dash="dash"),
-                                name=f"{ty}: grid best, mean over k-subsets", row=1, col=col, showlegend=col == 1,
+                                name=f"{ty}: grid best, mean over k-subsets", row=row, col=col, showlegend=i == 0,
                                 legendgroup=f"{ty}m", hovertemplate=f"{ty} k=%{{x}}: mean best %{{y:.2f}}<extra></extra>")
                 rep.setdefault("dim", {}).setdefault(lab, {})[ty] = {"first": first, "subset_mean": mean}
             hs = [(k, held(G, t, f"{sub[k]}-{'gamma' if ty == 'γ' else 'beta'}")) for k in K]
@@ -300,24 +316,26 @@ def fig_dim(out, rep):
                                 error_y=dict(type="data", symmetric=False, array=[s[2] - s[0] for s in st],
                                              arrayminus=[s[0] - s[1] for s in st]),
                                 line=dict(color=color, width=2), marker=dict(size=9), name=f"{ty}: held-out of the pick",
-                                row=1, col=col, showlegend=col == 1, legendgroup=f"{ty}h",
+                                row=row, col=col, showlegend=i == 0, legendgroup=f"{ty}h",
                                 text=[f"{h['key']}, {s[3]}/{s[4]} vs z=0" for (_, h), s in zip(hs, st)],
                                 hovertemplate=f"{ty} k=%{{x}} %{{text}}: held-out %{{y:.2f}}<extra></extra>")
                 rep.setdefault("dim", {}).setdefault(lab, {})[f"{ty}_held"] = {k: h["rate"] for k, h in hs}
         if z:
-            fig.add_hline(y=z["rate"], line=dict(color=ZERO, dash="dot"), row=1, col=col, annotation_text="z = 0 held-out",
+            fig.add_hline(y=z["rate"], line=dict(color=ZERO, dash="dot"), row=row, col=col, annotation_text="z = 0 held-out",
                           annotation_position="bottom right")
     fig.update_xaxes(title_text="axes per type k (d = 2k)", type="log", tickvals=list(K))
-    fig.update_yaxes(title_text="success", range=[-0.05, 1.05], row=1, col=1)
-    layout(fig, height=440, title="z dimension on layers 7, 15, 23, 31: grid best and held-out vs number of axes")
+    fig.update_yaxes(range=[-0.05, 1.05])
+    fig.update_yaxes(title_text="success", col=1)
+    tlayout(fig, R, 320, title="z dimension on layers 7, 15, 23, 31: grid best and held-out vs number of axes")
     pt.save(fig, out, "dim")
 
 
 def fig_combo(out, rep):
     """5 × 5 grid in the plane of the best γ and best β axis: off-axis cells from the combo run, axes from the d16 grids."""
-    fig = make_subplots(1, len(TASKS), subplot_titles=[x[0] for x in TASKS], horizontal_spacing=0.1)
+    fig, pos, R = task_fig(horizontal_spacing=0.1)
     vals = (-1, -0.5, 0, 0.5, 1)
-    for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
+    for i, (lab, G, F, T, t) in enumerate(TASKS):
+        row, col = pos(i)
         d, g = G / f"grid-t{t}-combo", grid_cells(G, F, t, "d16")
         if not done(d) or g is None:
             continue
@@ -329,22 +347,24 @@ def fig_combo(out, rep):
             S[vals.index(r["Z"][k][ba] / 4), vals.index(r["Z"][k][ga] / 4)] = r["success"][r["ep_z"] == k].mean()
         for c in g[0]:
             if c["c"] in vals and c["a"] in (ga, ba):
-                i = vals.index(c["c"])
-                S[(i, 2) if c["a"] == ba else (2, i)] = c["s"].mean()
+                j = vals.index(c["c"])
+                S[(j, 2) if c["a"] == ba else (2, j)] = c["s"].mean()
         fig.add_heatmap(z=S, x=[f"{v:+g}" for v in vals], y=[f"{v:+g}" for v in vals], zmin=0, zmax=1, colorscale="Blues",
-                        showscale=col == 1, colorbar=dict(title="success"), row=1, col=col,
+                        showscale=i == 0, colorbar=dict(title="success", len=0.4, y=1, yanchor="top"), row=row, col=col,
                         hovertemplate=f"γ axis {ga} c=%{{x}}, β axis {ba} c=%{{y}}: success %{{z:.2f}}<extra></extra>")
-        fig.update_xaxes(title_text=f"c on γ axis {ga}", row=1, col=col)
-        fig.update_yaxes(title_text=f"c on β axis {ba}", row=1, col=col)
+        fig.update_xaxes(title_text=f"c on γ axis {ga}", row=row, col=col)
+        fig.update_yaxes(title_text=f"c on β axis {ba}", row=row, col=col)
         rep.setdefault("combo", {})[lab] = {"axes": [int(ga), int(ba)], "S": np.round(S, 3).tolist()}
-    layout(fig, height=420, title="2-D grid: best γ axis × best β axis (centre = z = 0; 8 inits per cell)")
+    tlayout(fig, R, 330, title="2-D grid: best γ axis × best β axis (centre = z = 0; 8 inits per cell)",
+            margin=dict(l=60, r=90, t=100, b=60))
     pt.save(fig, out, "combo")
 
 
 def fig_gain_success(out, rep):
     """Post-hoc check of step size: grid success at |c| (mean over signs and axes) vs measured open-loop gain at |c|."""
-    fig = make_subplots(1, len(TASKS), subplot_titles=[x[0] for x in TASKS], shared_yaxes=True)
-    for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
+    fig, pos, R = task_fig(shared_yaxes=True)
+    for i, (lab, G, F, T, t) in enumerate(TASKS):
+        row, col = pos(i)
         for p, n, v in variants():
             g, (d, cols) = grid_cells(G, F, t, v), ol(G, t, v)
             if g is None or d is None:
@@ -354,11 +374,12 @@ def fig_gain_success(out, rep):
             ys = [g[1].mean()] + [np.mean([c["s"].mean() for c in g[0] if abs(c["c"]) == m]) for m in (0.5, 1.0, 2.0)]
             fig.add_scatter(x=xs, y=ys, mode="lines+markers", line=dict(color=COLOR[p], width=1.5),
                             marker=dict(size=8, symbol=SYMBOL[n]), name=f"{v} ({LAYERS[v]})", legendgroup=v,
-                            showlegend=col == 1, row=1, col=col, text=["z=0", "|c|=0.5", "|c|=1", "|c|=2"],
+                            showlegend=i == 0, row=row, col=col, text=["z=0", "|c|=0.5", "|c|=1", "|c|=2"],
                             hovertemplate=f"{v} %{{text}}: gain %{{x:.3f}}, success %{{y:.2f}}<extra></extra>")
-    fig.update_xaxes(title_text="measured RMS Δa of first action at |c| (open loop)")
-    fig.update_yaxes(title_text="grid success, mean over axes and signs", range=[-0.05, 1.05], row=1, col=1)
-    layout(fig, height=480, title="Success vs measured action change: do the variants collapse onto one curve?",
+    fig.update_xaxes(title_text="RMS Δa0 at |c| (open loop)")
+    fig.update_yaxes(range=[-0.05, 1.05])
+    fig.update_yaxes(title_text="grid success", col=1)
+    tlayout(fig, R, 300, title="Success vs measured action change: do the variants collapse onto one curve?",
            legend=dict(orientation="v", x=1.02, y=1))
     pt.save(fig, out, "gain_success")
 

@@ -18,7 +18,7 @@ figcaption { color:var(--muted); font-size:.87em; margin-top:.4em; }
 pre.vlm { background:var(--code); padding:.6em .9em; border-radius:4px; white-space:pre-wrap; font-size:.85em; }
 .key { border-left:3px solid var(--acc); padding:.2em .9em; margin:1em 0; }
 </style></head><body>
-<h1>FiLM ablation on SmolVLA: z dimension, layer position and layer count (LIBERO-Object)</h1>
+<h1>FiLM ablation on SmolVLA: z dimension, layer position and layer count (LIBERO-Object, LIBERO-10)</h1>
 <p>Follow-up to <a href="smolvla_film_split_object.html">coupled vs split FiLM</a>. Which FiLM placement and how many z
 dimensions give the most usable control space, measured by closed-loop axis grids and held-out re-runs of the best grid z.
 No CEM in this round.</p>
@@ -43,16 +43,50 @@ No CEM in this round.</p>
 <tr><td>16 (α 0.15)</td><td></td><td></td><td></td><td>1, 3, …, 31</td></tr></table></li>
 <li><b>z dimension</b>: on R′ layers, one d = 16 grid (R′'s 8 axes + 8 new). With the nested W, axis k is the same vector in
   γ/β space for every d, so d = 2k is the first k γ and first k β axes of that grid.</li>
-<li><b>Closed-loop grid</b> (<code>research/run.py</code>): t0 and t7, every axis at c ∈ {±0.5, ±1, ±2}, inits 0–7, one episode
-  each, flow noise paired by init (every grid's z = 0 episodes are bitwise identical). <b>Held-out</b>: the best γ cell and the
+<li><b>Tasks</b>: LIBERO-Object t0, t7 (as film_split), and four LIBERO-10 tasks picked by a z = 0 pilot for room in both
+  directions (held-out z = 0 in brackets, max 520 steps): t1 put both the cream cheese box and the butter in the basket (0.30),
+  t2 turn on the stove and put the moka pot on it (0.55), t6 put the white mug on the plate and the chocolate pudding to the
+  right of the plate (0.30), t9 put the yellow and white mug in the microwave and close it (0.55).</li>
+<li><b>Closed-loop grid</b> (<code>research/run.py</code>): every axis at c ∈ {±0.5, ±1, ±2}, inits 0–7, one episode
+  each, flow noise paired by init (z = 0 episodes are bitwise identical across grids, except LIBERO-10 t2 and t9, see takeaways). <b>Held-out</b>: the best γ cell and the
   best β cell of each variant (and of each d subset) on inits 10–39 × 2 reps (n = 60), paired with the ticket round's z = 0.</li>
 <li><b>2-D grid</b>: in the plane of the best γ and best β axis of the d = 16 grid, a, b ∈ {±0.5, ±1}.</li>
-<li>Machine: local RTX 4090 laptop, B = 12 envs, as film_split. Queue <code>experiments/libero/film_ablation/local.sh</code>,
-  figures <code>research/plot_film_ablation.py</code>.</li>
+<li>LIBERO-10 differences: the d = 16 grid is two 8-axis runs on R′ (γ axes 0–7, β axes 8–15, same c scale), and the
+  held-out z = 0 is its own run (inits 10–39 × 2) instead of the ticket round's.</li>
+<li>Machines: object on the local RTX 4090 laptop, B = 12 envs, as film_split (<code>experiments/libero/film_ablation/local.sh</code>);
+  LIBERO-10 on Sol A100s, B = 30 (<code>experiments/libero/film_ablation/sol.sh</code>, open loop locally).
+  Figures <code>research/plot_film_ablation.py</code>.</li>
 </ul>
 
 <h2>Takeaways</h2>
-<!--takeaways-->
+<div class="key"><ul>
+<li><b>The split is object vs LIBERO-10, not between variants.</b> On object t0 / t7 the best grid pick of almost every variant
+  beats z = 0 on held-out: 19 / 26 and 21 / 26 picks are significantly better and none worse (best 0.95 f4 β and 0.97 l1 β,
+  vs z = 0 0.42 / 0.43). On LIBERO-10 the same procedure rarely transfers: 4, 3, 7 and 0 of 26 picks are significantly
+  better on t1, t2, t6, t9, and on t9 17 / 26 are significantly <i>worse</i> than z = 0 (0.55). Best LIBERO-10 held-outs:
+  t1 0.50 (z = 0 0.30, l4 γ), t2 0.72–0.73 (0.55; s16 β, d16 β, 2-D combo), t6 0.53 (0.30, l1 γ), t9 none.</li>
+<li><b>Not a larger push per step.</b> Open-loop action change at c = 1 is on the same scale on LIBERO-10 (0.11–0.35) as on
+  object (0.12–0.36), and below the flow-noise sd (0.34–0.46). Yet on t1 / t6 the grid mean at c = ±0.5 is below z = 0 for
+  every variant (0.15–0.39 vs 0.62): the same action change costs more success there (last figure). |c| &lt; 0.5 was not
+  tested; one untested reading is that a fixed z over up to 520 steps lets small deviations add up.</li>
+<li><b>Variants differ mostly in step size.</b> Within a task, grid success (mean over axes and signs) against the measured
+  open-loop action change at the same |c| falls on about one curve for all 13 variants. Parameter-energy parity is not
+  action parity: front layers move the action most, so they sit further down that curve at a given c.</li>
+<li><b>8-init grid picks are optimistic.</b> The 2-D combo grids peak at 0.875 / 1.0 on object, but their picks reach only
+  0.50 / 0.53 on held-out (n.s.), below the single-axis picks: 16 more candidates, more selection noise. On t9 the grid inits
+  0–7 are hard (z = 0 0.12–0.25 vs 0.55 on held-out inits), so picks chosen there may not suit the held-out inits.</li>
+<li><b>z dimension</b> (object): the β pick's held-out rises from d = 2 (0.50 / 0.60) to d = 4 (0.88 / 0.87), then stays;
+  γ needs d = 8 (0.80 / 0.67). The 8 extra axes of d = 16 never won a pick on object; on LIBERO-10 they won 6 of 8 picks
+  but held-out did not improve (only t2 β 0.73, p = 0.02). The effective rank of ∂a/∂z keeps growing with d (mean 1.6, 2.4,
+  3.3, 4.1 for d = 2, 4, 8, 16), so success saturates before the rank does.</li>
+<li><b>Position and count.</b> At equal parameter energy, front layers move the action most (gain 0.21–0.36 at c = 1) and
+  late layers least (0.11–0.21). On object, front β picks are good on both tasks (0.77–0.95), 16-layer β is the weakest
+  (0.48 / 0.58) and 1-layer mid β is weak (0.52 / 0.55); γ picks show no position pattern, and 1 vs 2 vs 4 layers has no
+  consistent effect. On LIBERO-10 no position or count is consistently better.</li>
+<li><b>Pairing caveat.</b> z = 0 episodes are not reproducible on LIBERO-10 t2 (they differ even between two identical local
+  runs) and t9 (they differ between Sol runs; two local runs matched). Object and LIBERO-10 t1 / t6 are bitwise identical.
+  On t2 / t9 the W/L sign tests stay valid but lose the power of paired noise.</li>
+</ul></div>
 
 <h2>Open loop</h2>
 <figure><!--fig:openloop--><figcaption>RMS change of the first action (normalized units; with n_action_steps = 1 it is the
