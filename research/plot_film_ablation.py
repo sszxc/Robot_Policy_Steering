@@ -1,9 +1,11 @@
 """Figures + tables for docs/results/smolvla_film_ablation_object.html: FiLM z dim and layer position × count ablation.
 
-G = experiments/libero/film_ablation/local.sh outputs, F = film_split outputs (R′ d8 grids), T = research.ticket root (z=0 held-out).
-Axes are d16 split names: γ 0-7, β 8-15 (R′ d8 = γ 0-3, β 8-11). Variant keys: {f,m,l,s}{#layers}; s4 = R′.
+G = experiments/libero/film_ablation/local.sh outputs, F = film_split outputs (R′ d8 grids), T = research.ticket root (z=0 held-out)
+for object t0/t7; --l10 = sol.sh root for libero_10 tasks. Axes are d16 split names: γ 0-7, β 8-15 (R′ d8 = γ 0-3, β 8-11).
+Variant keys: {f,m,l,s}{#layers}; s4 = R′.
 python -m research.plot_film_ablation out/libero/smolvla/film_ablation out/libero/smolvla/film_split out/ticket-local \
-    --out out/film-ablation-figs --template research/film_ablation_report.html --page docs/results/smolvla_film_ablation_object.html
+    [--l10 out/libero/smolvla/film_ablation_10 --l10-tasks 6,8] --out out/film-ablation-figs \
+    --template research/film_ablation_report.html --page docs/results/smolvla_film_ablation_object.html
 """
 import argparse
 import itertools
@@ -17,7 +19,7 @@ from research import plot_ticket as pt
 from research.plot_icl import page
 from research.plot_steer2 import wilson
 
-TASKS = (0, 7)
+TASKS = []  # (label, G, F, T, task id), set in main; F = T = None for a sol.sh root (libero_10)
 POS = {"front": "f", "mid": "m", "late": "l", "spread": "s"}
 COUNTS = (1, 2, 4, 16)
 LAYERS = {"f1": "3", "f2": "3,5", "f4": "1,3,5,7", "m1": "15", "m2": "15,17", "m4": "13,15,17,19", "l1": "27",
@@ -57,7 +59,14 @@ def done(d):
 
 def grid_cells(G, F, t, v):
     """Cells of variant v on task t (None if a run is missing). s4 = R′ from film_split: γ·x̂ axes from split-in,
-    β axes from split (β is the same with or without centring); d16 = R′ + the 8 new axes."""
+    β axes from split (β is the same with or without centring); d16 = R′ + the 8 new axes. Sol roots (F None):
+    d16 = grids d16g + d16b on all 16 axes, s4 = their R′ axes."""
+    if v in ("s4", "d16") and F is None:
+        if not (done(G / f"grid-t{t}-d16g") and done(G / f"grid-t{t}-d16b")):
+            return None
+        g, z0, _ = cells(G / f"grid-t{t}-d16g")
+        cs = g + cells(G / f"grid-t{t}-d16b")[0]
+        return [c for c in cs if v == "d16" or c["a"] % 8 < 4], z0
     if v in ("s4", "d16"):
         if not (done(F / f"grid-t{t}-split-in") and done(F / f"grid-t{t}-split")):
             return None
@@ -106,6 +115,18 @@ def held(G, t, name):
             "key": d.split("-", 3)[-1]}
 
 
+def zero(G, T, t):
+    """z=0 held-out record (init, rep order): research.ticket film8 arm, or held-t{t}-zero of a sol.sh root."""
+    if T is not None:
+        return pt.zero_held(pt.load(T, ("film8",)), t)
+    d = G / f"held-t{t}-zero"
+    if not done(d):
+        return None
+    r = np.load(d / "results.npz")
+    o = np.lexsort((r["ep_rep"], r["ep_init"]))
+    return {"init": r["ep_init"][o].tolist(), "success": r["success"][o].tolist(), "rate": float(r["success"].mean())}
+
+
 def ol(G, t, v):
     """(openloop npz, {d16 axis: column}) of a variant; s4 and d16 share the d16 run."""
     f = G / f"openloop-t{t}-{'d16' if v in ('s4', 'd16') else v}" / "openloop.npz"
@@ -140,10 +161,10 @@ def held_stats(h, z):
     return p, lo, hi, w, l, pv
 
 
-def fig_openloop(G, out, rep):
+def fig_openloop(out, rep):
     """First-action RMS Δa at c = 1 per variant: x = #layers, one line per position, γ solid / β dashed."""
-    fig = make_subplots(1, len(TASKS), subplot_titles=[f"t{t}" for t in TASKS], shared_yaxes=True)
-    for col, t in enumerate(TASKS, 1):
+    fig = make_subplots(1, len(TASKS), subplot_titles=[x[0] for x in TASKS], shared_yaxes=True)
+    for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
         nsd = None
         for p in POS:
             for ty, (axes, dash) in TYPE.items():
@@ -153,7 +174,7 @@ def fig_openloop(G, out, rep):
                     if pp == p and d is not None:
                         xs.append(str(n)), ys.append(gain(d, cols, axes, 1.0))
                         nsd = float(d["noise_a"][..., 0, :].std(1).mean())
-                        rep.setdefault("openloop", {}).setdefault(f"t{t}", {}).setdefault(v, {})[ty] = round(ys[-1], 4)
+                        rep.setdefault("openloop", {}).setdefault(lab, {}).setdefault(v, {})[ty] = round(ys[-1], 4)
                 if xs:
                     fig.add_scatter(x=xs, y=ys, mode="lines+markers", line=dict(color=COLOR[p], width=2, dash=dash),
                                     marker=dict(size=8), name=f"{p}, {ty} axes", legendgroup=f"{p}{ty}", showlegend=col == 1,
@@ -167,12 +188,12 @@ def fig_openloop(G, out, rep):
     pt.save(fig, out, "openloop")
 
 
-def fig_dose(G, F, out, rep):
+def fig_dose(out, rep):
     """Grid success vs c, mean over axes; rows γ / β, columns position, one line per #layers; buttons select the task."""
     fig = make_subplots(2, 4, subplot_titles=[f"{p}, {ty} axes" for ty in TYPE for p in POS], shared_xaxes=True,
                         shared_yaxes=True, vertical_spacing=0.1, horizontal_spacing=0.03)
     vis = []
-    for t in TASKS:
+    for lab, G, F, T, t in TASKS:
         for row, (ty, (axes, _)) in enumerate(TYPE.items(), 1):
             for col, p in enumerate(POS, 1):
                 for pp, n, v in variants():
@@ -183,14 +204,14 @@ def fig_dose(G, F, out, rep):
                     fig.add_scatter(x=x, y=y, mode="lines+markers", line=dict(width=2, color=COLOR[p]),
                                     marker=dict(size=8, symbol=SYMBOL[n]), opacity=0.4 + 0.15 * COUNTS.index(n),
                                     name=f"{n} layer{'s' * (n > 1)}", legendgroup=str(n), showlegend=row == col == 1,
-                                    visible=t == TASKS[0], row=row, col=col,
+                                    visible=lab == TASKS[0][0], row=row, col=col,
                                     hovertemplate=f"{v} ({LAYERS[v]}), {ty}, c=%{{x}}: success %{{y:.2f}}<extra></extra>")
-                    vis.append(t)
-                    rep.setdefault("dose", {}).setdefault(f"t{t}", {}).setdefault(v, {})[ty] = dict(
+                    vis.append(lab)
+                    rep.setdefault("dose", {}).setdefault(lab, {}).setdefault(v, {})[ty] = dict(
                         zip(map(str, x), np.round(y, 3).tolist()))
     if not vis:
         return
-    buttons = [dict(label=f"t{t}", method="update", args=[{"visible": [x == t for x in vis]}]) for t in TASKS]
+    buttons = [dict(label=lab, method="update", args=[{"visible": [x == lab for x in vis]}]) for lab, *_ in TASKS]
     fig.update_xaxes(title_text="c", row=2)
     fig.update_yaxes(range=[-0.05, 1.05])
     fig.update_yaxes(title_text="success, inits 0–7", col=1)
@@ -199,16 +220,16 @@ def fig_dose(G, F, out, rep):
     pt.save(fig, out, "dose")
 
 
-def fig_factorial(G, F, T, out, rep):
+def fig_factorial(out, rep):
     """Two figures over (position × #layers): mean grid success at |c| = 0.5, and held-out of the best γ / β pick."""
     for name, title in (("mean05", "Grid: mean success over all 8 axes at c = ±0.5"),
                         ("heldfac", "Held-out success of the best γ pick and the best β pick (n = 60, 95% CI)")):
         rows = ("γ", "β") if name == "heldfac" else ("all",)
-        fig = make_subplots(len(rows), len(TASKS), subplot_titles=[f"t{t}, {r} pick" if name == "heldfac" else f"t{t}"
-                                                                    for r in rows for t in TASKS],
+        fig = make_subplots(len(rows), len(TASKS), subplot_titles=[f"{x[0]}, {r} pick" if name == "heldfac" else x[0]
+                                                                    for r in rows for x in TASKS],
                             shared_xaxes=True, shared_yaxes=True, vertical_spacing=0.12)
-        for col, t in enumerate(TASKS, 1):
-            z = pt.zero_held(pt.load(T, ("film8",)), t)
+        for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
+            z = zero(G, T, t)
             for row, ty in enumerate(rows, 1):
                 ref = None
                 for p in POS:
@@ -236,7 +257,7 @@ def fig_factorial(G, F, T, out, rep):
                                         mode="lines+markers", line=dict(color=COLOR[p], width=2), marker=dict(size=9),
                                         name=p, legendgroup=p, showlegend=row == col == 1, row=row, col=col, text=tips,
                                         hovertemplate="%{text}: %{y:.2f}<extra></extra>")
-                        rep.setdefault(name, {}).setdefault(f"t{t}", {}).setdefault(ty, {})[p] = dict(zip(xs, np.round(ys, 3).tolist()))
+                        rep.setdefault(name, {}).setdefault(lab, {}).setdefault(ty, {})[p] = dict(zip(xs, np.round(ys, 3).tolist()))
                 ref = z["rate"] if name == "heldfac" and z else ref
                 if ref is not None:
                     fig.add_hline(y=ref, line=dict(color=ZERO, dash="dot"), row=row, col=col,
@@ -248,15 +269,15 @@ def fig_factorial(G, F, T, out, rep):
         pt.save(fig, out, name)
 
 
-def fig_dim(G, F, T, out, rep):
+def fig_dim(out, rep):
     """d ablation on R′ layers: k axes per type (d = 2k). Grid best of the first k axes, mean best of every k-subset of the
     8 axes, and held-out of the first-k pick."""
-    fig = make_subplots(1, len(TASKS), subplot_titles=[f"t{t}" for t in TASKS], shared_yaxes=True)
+    fig = make_subplots(1, len(TASKS), subplot_titles=[x[0] for x in TASKS], shared_yaxes=True)
     K = (1, 2, 4, 8)
     sub = {1: "d1", 2: "d4", 4: "d8", 8: "d16"}
-    for col, t in enumerate(TASKS, 1):
+    for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
         g = grid_cells(G, F, t, "d16")
-        z = pt.zero_held(pt.load(T, ("film8",)), t)
+        z = zero(G, T, t)
         for ty, (axes, dash) in TYPE.items():
             color = "#2a78d6" if ty == "γ" else "#eb6834"
             if g is not None:
@@ -270,7 +291,7 @@ def fig_dim(G, F, T, out, rep):
                 fig.add_scatter(x=list(K), y=mean, mode="lines", line=dict(color=color, width=1, dash="dash"),
                                 name=f"{ty}: grid best, mean over k-subsets", row=1, col=col, showlegend=col == 1,
                                 legendgroup=f"{ty}m", hovertemplate=f"{ty} k=%{{x}}: mean best %{{y:.2f}}<extra></extra>")
-                rep.setdefault("dim", {}).setdefault(f"t{t}", {})[ty] = {"first": first, "subset_mean": mean}
+                rep.setdefault("dim", {}).setdefault(lab, {})[ty] = {"first": first, "subset_mean": mean}
             hs = [(k, held(G, t, f"{sub[k]}-{'gamma' if ty == 'γ' else 'beta'}")) for k in K]
             hs = [(k, h) for k, h in hs if h]
             if hs:
@@ -282,7 +303,7 @@ def fig_dim(G, F, T, out, rep):
                                 row=1, col=col, showlegend=col == 1, legendgroup=f"{ty}h",
                                 text=[f"{h['key']}, {s[3]}/{s[4]} vs z=0" for (_, h), s in zip(hs, st)],
                                 hovertemplate=f"{ty} k=%{{x}} %{{text}}: held-out %{{y:.2f}}<extra></extra>")
-                rep.setdefault("dim", {}).setdefault(f"t{t}", {})[f"{ty}_held"] = {k: h["rate"] for k, h in hs}
+                rep.setdefault("dim", {}).setdefault(lab, {})[f"{ty}_held"] = {k: h["rate"] for k, h in hs}
         if z:
             fig.add_hline(y=z["rate"], line=dict(color=ZERO, dash="dot"), row=1, col=col, annotation_text="z = 0 held-out",
                           annotation_position="bottom right")
@@ -292,11 +313,11 @@ def fig_dim(G, F, T, out, rep):
     pt.save(fig, out, "dim")
 
 
-def fig_combo(G, F, out, rep):
+def fig_combo(out, rep):
     """5 × 5 grid in the plane of the best γ and best β axis: off-axis cells from the combo run, axes from the d16 grids."""
-    fig = make_subplots(1, len(TASKS), subplot_titles=[f"t{t}" for t in TASKS], horizontal_spacing=0.1)
+    fig = make_subplots(1, len(TASKS), subplot_titles=[x[0] for x in TASKS], horizontal_spacing=0.1)
     vals = (-1, -0.5, 0, 0.5, 1)
-    for col, t in enumerate(TASKS, 1):
+    for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
         d, g = G / f"grid-t{t}-combo", grid_cells(G, F, t, "d16")
         if not done(d) or g is None:
             continue
@@ -315,15 +336,15 @@ def fig_combo(G, F, out, rep):
                         hovertemplate=f"γ axis {ga} c=%{{x}}, β axis {ba} c=%{{y}}: success %{{z:.2f}}<extra></extra>")
         fig.update_xaxes(title_text=f"c on γ axis {ga}", row=1, col=col)
         fig.update_yaxes(title_text=f"c on β axis {ba}", row=1, col=col)
-        rep.setdefault("combo", {})[f"t{t}"] = {"axes": [int(ga), int(ba)], "S": np.round(S, 3).tolist()}
+        rep.setdefault("combo", {})[lab] = {"axes": [int(ga), int(ba)], "S": np.round(S, 3).tolist()}
     layout(fig, height=420, title="2-D grid: best γ axis × best β axis (centre = z = 0; 8 inits per cell)")
     pt.save(fig, out, "combo")
 
 
-def fig_gain_success(G, F, out, rep):
+def fig_gain_success(out, rep):
     """Post-hoc check of step size: grid success at |c| (mean over signs and axes) vs measured open-loop gain at |c|."""
-    fig = make_subplots(1, len(TASKS), subplot_titles=[f"t{t}" for t in TASKS], shared_yaxes=True)
-    for col, t in enumerate(TASKS, 1):
+    fig = make_subplots(1, len(TASKS), subplot_titles=[x[0] for x in TASKS], shared_yaxes=True)
+    for col, (lab, G, F, T, t) in enumerate(TASKS, 1):
         for p, n, v in variants():
             g, (d, cols) = grid_cells(G, F, t, v), ol(G, t, v)
             if g is None or d is None:
@@ -354,13 +375,13 @@ def fmt_held(h, z):
     return f"{p:.2f} [{lo:.2f}, {hi:.2f}] {h['key']}, {w}/{l} p={pv:.2g}"
 
 
-def tab_variants(G, F, T, out, rep):
+def tab_variants(out, rep):
     rows = []
-    for t in TASKS:
-        z = pt.zero_held(pt.load(T, ("film8",)), t)
+    for lab, G, F, T, t in TASKS:
+        z = zero(G, T, t)
         for p, n, v in variants():
             g, (d, cols) = grid_cells(G, F, t, v), ol(G, t, v)
-            r = [f"t{t}", v, LAYERS[v], ALPHA[n]]
+            r = [lab, v, LAYERS[v], ALPHA[n]]
             r += [f"{gain(d, cols, TYPE[ty][0], 1.0):.3f}" if d is not None else "–" for ty in TYPE]
             r += [f"{eff_rank(d, cols):.2f}" if d is not None else "–"]
             if g:
@@ -379,28 +400,29 @@ def tab_variants(G, F, T, out, rep):
                                 "held-out best γ [95% CI] pick, W/L vs z=0", "held-out best β"], rows)
 
 
-def tab_dim(G, F, T, out, rep):
+def tab_dim(out, rep):
     rows = []
-    for t in TASKS:
-        z = pt.zero_held(pt.load(T, ("film8",)), t)
+    for lab, G, F, T, t in TASKS:
+        z = zero(G, T, t)
         d, cols = ol(G, t, "d16")
         for k, s in ((1, "d1"), (2, "d4"), (4, "d8"), (8, "d16")):
             axes = [a for a in range(16) if a % 8 < k]
             er = f"{eff_rank(d, cols, axes):.2f}" if d is not None else "–"
             erg = f"{eff_rank(d, cols, [a for a in axes if a < 8]):.2f}" if d is not None and k > 1 else "1"
-            rows.append([f"t{t}", 2 * k, er, erg] + [fmt_held(held(G, t, f"{s}-{ty}"), z) for ty in ("gamma", "beta")])
-            rep.setdefault("rank", {}).setdefault(f"t{t}", {})[2 * k] = er
+            rows.append([lab, 2 * k, er, erg] + [fmt_held(held(G, t, f"{s}-{ty}"), z) for ty in ("gamma", "beta")])
+            rep.setdefault("rank", {}).setdefault(lab, {})[2 * k] = er
     table(out, "tab_dim", ["task", "d", "eff. rank ∂a/∂z (all d columns)", "eff. rank, γ columns only",
                            "held-out best γ pick", "held-out best β pick"], rows)
 
 
-def checks(G, F, rep):
-    """z=0 episodes of every grid match the film_split grids bitwise (same seeds; pairing holds)."""
-    for t in TASKS:
-        ref = cells(F / f"grid-t{t}-split-in")[2] if done(F / f"grid-t{t}-split-in") else None
+def checks(rep):
+    """z=0 episodes of every grid match the film_split grids (Sol roots: the d16g grid) bitwise (same seeds; pairing holds)."""
+    for lab, G, F, T, t in TASKS:
+        r0 = G / f"grid-t{t}-d16g" if F is None else F / f"grid-t{t}-split-in"
+        ref = cells(r0)[2] if done(r0) else None
         runs = [d for d in G.glob(f"grid-t{t}-*") if done(d)]
-        rep.setdefault("zero_identical", {})[f"t{t}"] = ref is not None and all(np.array_equal(cells(d)[2], ref) for d in runs)
-        rep.setdefault("n_grids", {})[f"t{t}"] = len(runs)
+        rep.setdefault("zero_identical", {})[lab] = ref is not None and all(np.array_equal(cells(d)[2], ref) for d in runs)
+        rep.setdefault("n_grids", {})[lab] = len(runs)
 
 
 def main():
@@ -408,21 +430,19 @@ def main():
     parser.add_argument("G", type=Path)
     parser.add_argument("F", type=Path)
     parser.add_argument("T", type=Path)
+    parser.add_argument("--l10", type=Path, help="sol.sh root of the libero_10 tasks")
+    parser.add_argument("--l10-tasks", default="")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--template", type=Path)
     parser.add_argument("--page", type=Path)
     a = parser.parse_args()
     a.out.mkdir(parents=True, exist_ok=True)
+    TASKS[:] = [(f"obj t{t}", a.G, a.F, a.T, t) for t in (0, 7)]
+    TASKS.extend((f"L10 t{t}", a.l10, None, None, int(t)) for t in a.l10_tasks.split(",") if t)
     rep = {}
-    checks(a.G, a.F, rep)
-    fig_openloop(a.G, a.out, rep)
-    fig_dose(a.G, a.F, a.out, rep)
-    fig_factorial(a.G, a.F, a.T, a.out, rep)
-    fig_dim(a.G, a.F, a.T, a.out, rep)
-    fig_combo(a.G, a.F, a.out, rep)
-    fig_gain_success(a.G, a.F, a.out, rep)
-    tab_variants(a.G, a.F, a.T, a.out, rep)
-    tab_dim(a.G, a.F, a.T, a.out, rep)
+    checks(rep)
+    for f in (fig_openloop, fig_dose, fig_factorial, fig_dim, fig_combo, fig_gain_success, tab_variants, tab_dim):
+        f(a.out, rep)
     (a.out / "report.json").write_text(json.dumps(rep, indent=1, default=float))
     if a.template:
         page(a.template, a.out, a.page)
