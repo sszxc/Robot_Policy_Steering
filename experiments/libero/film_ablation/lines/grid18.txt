@@ -1,0 +1,2 @@
+G=/scratch/xzhan742/thesis/results/smolvla/film_ablation_10 bash experiments/libero/film_ablation/sol.sh libero_10 6 30 grid:m4 held:m4
+G=/scratch/xzhan742/thesis/results/smolvla/film_ablation_10 bash experiments/libero/film_ablation/sol.sh libero_10 6 30 grid:l4 held:l4
