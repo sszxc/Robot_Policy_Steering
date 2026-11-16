@@ -60,11 +60,15 @@ for u in "$@"; do
             done ;;
     held:*) v=${u#held:} L=${LAYERS[${u#held:}]}
             for k in gamma beta; do held $v-$k $v $L 8 $(a_of $L) $k - $G/grid-t$t-$v; done ;;
-    combo)  # 2-D grid in the plane of the best γ and best β axis of the d16 picks, a, b ∈ {±0.5, ±1}
+    combo)  # 2-D grid in the plane of the best γ and best β axis of the d16 grids (own picks; held:d may run alongside)
       c=$G/combo-t$t.npy
+      for k in gamma beta; do
+        [ -f $G/combo-t$t-$k.npy ] || $P $E/pick.py $G/combo-t$t-$k.npy 16 $k - $G/grid-t$t-d16g $G/grid-t$t-d16b \
+          > /dev/null 2>> $G/logs/pick.log
+      done
       [ -f $c ] || $P -c "
 import numpy as np
-g, b = (int(np.abs(np.load('$G/pick-t$t-d16-' + k + '.npy')[0]).argmax()) for k in ('gamma', 'beta'))
+g, b = (int(np.abs(np.load('$G/combo-t$t-' + k + '.npy')[0]).argmax()) for k in ('gamma', 'beta'))
 Z = []
 for x in (-1, -0.5, 0.5, 1):
     for y in (-1, -0.5, 0.5, 1):

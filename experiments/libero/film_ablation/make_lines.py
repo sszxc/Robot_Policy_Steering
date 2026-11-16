@@ -1,6 +1,7 @@
 """libero_10 film_ablation lines for platforms/hpc/slurm/steer_lines.sbatch (PAR=2), one A100 job per file.
 grid%a.txt: per task the d16g/d16b grids, then 6 jobs of two layer variants (each line: grid, then its held-out).
 dheld%a.txt (submit after the d16 grids): d-subset held-outs and the 2-D combo of one task.
+combo.txt: the combos alone, two tasks per line (rerun after the combo fix of 2026-11-16).
 python experiments/libero/film_ablation/make_lines.py TASKS B OUT_DIR   e.g. 2,6,8,9 30 experiments/libero/film_ablation/lines
 """
 import sys
@@ -19,6 +20,7 @@ grid = [[line(t, "grid:d16g"), line(t, "grid:d16b")] for t in tasks]
 grid += [[line(t, f"grid:{a}", f"held:{a}"), line(t, f"grid:{b}", f"held:{b}")] for t in tasks for a, b in PAIRS]
 dheld = [[line(t, "held:d"), line(t, "combo")] for t in tasks]
 out.mkdir(parents=True, exist_ok=True)
+(out / "combo.txt").write_text("".join("; ".join(line(t, "combo") for t in tasks[i::2]) + "\n" for i in (0, 1)))
 for name, parts in (("grid", grid), ("dheld", dheld)):
     for i, p in enumerate(parts):
         (out / f"{name}{i}.txt").write_text("\n".join(p) + "\n")
