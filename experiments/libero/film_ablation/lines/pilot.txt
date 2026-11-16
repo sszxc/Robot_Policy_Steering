@@ -1,0 +1,6 @@
+G=/scratch/xzhan742/thesis/results/smolvla/film_ablation_10 bash experiments/libero/film_ablation/sol.sh libero_10 1 30 scan zero
+G=/scratch/xzhan742/thesis/results/smolvla/film_ablation_10 bash experiments/libero/film_ablation/sol.sh libero_10 2 30 scan zero
+G=/scratch/xzhan742/thesis/results/smolvla/film_ablation_10 bash experiments/libero/film_ablation/sol.sh libero_10 6 30 scan zero
+G=/scratch/xzhan742/thesis/results/smolvla/film_ablation_10 bash experiments/libero/film_ablation/sol.sh libero_10 7 30 scan zero
+G=/scratch/xzhan742/thesis/results/smolvla/film_ablation_10 bash experiments/libero/film_ablation/sol.sh libero_10 8 30 scan zero
+G=/scratch/xzhan742/thesis/results/smolvla/film_ablation_10 bash experiments/libero/film_ablation/sol.sh libero_10 9 30 scan zero
