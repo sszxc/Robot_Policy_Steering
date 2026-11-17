@@ -17,11 +17,11 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 libero_runtime
 hostname
 nvidia-smi
 python -m research.pretrained.prepare_policy
 python platforms/hpc/checks/gpu_preflight.py
-python -m research.run --policy "$THESIS_DATA_ROOT/models/smolvla-libero-local" \
-  --output-dir "$THESIS_OUTPUT_ROOT/steer-${SLURM_JOB_ID:?Run using sbatch}" "$@"
+python -m research.run --policy "$RPS_DATA_ROOT/models/smolvla-libero-local" \
+  --output-dir "$RPS_OUTPUT_ROOT/steer-${SLURM_JOB_ID:?Run using sbatch}" "$@"

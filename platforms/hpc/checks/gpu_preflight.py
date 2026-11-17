@@ -44,6 +44,6 @@ info = {
     'av': av.__version__,
 }
 print(json.dumps(info, indent=2))
-(Path(os.environ['THESIS_DATA_ROOT']) / 'manifests' / ('preflight-' + info['job_id'] + '.json')).write_text(
+(Path(os.environ['RPS_DATA_ROOT']) / 'manifests' / ('preflight-' + info['job_id'] + '.json')).write_text(
     json.dumps(info, indent=2) + '\n'
 )

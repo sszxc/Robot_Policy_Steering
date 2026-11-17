@@ -37,9 +37,9 @@ Ignored locally: `out/` (outputs), `data/`, `.local-backups/`.
   SmolVLA, possibly Pi0.5 / GR00T later, and the LIBERO env.
 - Install the root package with `pip install --no-build-isolation --no-deps -e .`
   into an existing env; LeRobot is installed separately in the SmolVLA env.
-- `platforms/paths.py` env vars: `THESIS_REPO_ROOT`, `THESIS_DATA_ROOT` (`data`),
-  `THESIS_OUTPUT_ROOT` (`out`). HPC jobs source
-  `platforms/hpc/runtime.sh`, which sets scratch values and `THESIS_PYTHON_ENV`;
+- `platforms/paths.py` env vars: `RPS_REPO_ROOT`, `RPS_DATA_ROOT` (`data`),
+  `RPS_OUTPUT_ROOT` (`out`). HPC jobs source
+  `platforms/hpc/runtime.sh`, which sets scratch values and `RPS_PYTHON_ENV`;
   GPU LIBERO jobs then call its `libero_runtime` (env activation, offline caches, EGL).
 - Each LIBERO run gets a new output dir with `provenance.json` (commit, dirty,
   run args); lerobot's `eval_info.json` is the result.

@@ -2,7 +2,7 @@
 
 Run commands from the repository root in the SmolVLA/LIBERO environment (laptop:
 `/home/lab/miniforge3/envs/vla-libero/bin/python`; Sol: see [the quick reference](ASU_Sol_HPC_quick.md)).
-Default outputs go under `out/` or `THESIS_OUTPUT_ROOT`. Headless rendering needs `MUJOCO_GL=egl`.
+Default outputs go under `out/` or `RPS_OUTPUT_ROOT`. Headless rendering needs `MUJOCO_GL=egl`.
 
 ## SmolVLA / LIBERO
 

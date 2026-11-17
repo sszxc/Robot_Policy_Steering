@@ -16,7 +16,7 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 MODE="${1:-smoke}"
 case "$MODE" in
   smoke) export TASK_IDS='[0]' EPISODES=1; EXPECTED_EPISODES=1 ;;
@@ -31,11 +31,11 @@ case "$MODE" in
 esac
 
 libero_runtime
-ROOT="$THESIS_DATA_ROOT"
+ROOT="$RPS_DATA_ROOT"
 if [[ "$MODE" == task ]]; then
-  export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/smolvla/vanilla/libero10-task${TASK_INDEX}-${SLURM_ARRAY_JOB_ID}_${TASK_INDEX}"
+  export OUTPUT_DIR="$RPS_OUTPUT_ROOT/smolvla/vanilla/libero10-task${TASK_INDEX}-${SLURM_ARRAY_JOB_ID}_${TASK_INDEX}"
 else
-  export OUTPUT_DIR="$THESIS_OUTPUT_ROOT/smolvla/vanilla/libero10-${MODE}-${SLURM_JOB_ID}"
+  export OUTPUT_DIR="$RPS_OUTPUT_ROOT/smolvla/vanilla/libero10-${MODE}-${SLURM_JOB_ID}"
 fi
 hostname
 nvidia-smi

@@ -3,7 +3,7 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "thesis-policy-steering"
+name = "robot-policy-steering"
 version = "0.1.0"
 description = "Policy control-space research (SmolVLA / Pi0.5 on LIBERO)"
 requires-python = ">=3.12"

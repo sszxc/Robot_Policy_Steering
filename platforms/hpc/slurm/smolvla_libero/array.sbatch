@@ -17,5 +17,5 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%A_%a.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 bash platforms/hpc/slurm/smolvla_libero/eval.sbatch task

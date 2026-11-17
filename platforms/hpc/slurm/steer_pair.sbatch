@@ -19,7 +19,7 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 libero_runtime
 export TMPDIR=$(mktemp -d /tmp/steer-XXXXXX)  # vector-env forkserver sockets fail on scratch
 hostname
@@ -27,14 +27,14 @@ nvidia-smi
 python -m research.pretrained.prepare_policy
 TASK=$1 PCA=$2 ALPHA_RANDOM=$3 ALPHA_PCA=$4
 shift 4
-out="$THESIS_OUTPUT_ROOT/smolvla/steer/pair-${SLURM_JOB_ID:?Run using sbatch}-t$TASK"
+out="$RPS_OUTPUT_ROOT/smolvla/steer/pair-${SLURM_JOB_ID:?Run using sbatch}-t$TASK"
 mkdir -p "$out"
 if [[ $PCA == fit ]]; then
-  python -m research.fit_pca --policy "$THESIS_DATA_ROOT/models/smolvla-libero-local" --task-id "$TASK" \
+  python -m research.fit_pca --policy "$RPS_DATA_ROOT/models/smolvla-libero-local" --task-id "$TASK" \
     --episodes 24 --batch-size 24 --output-dir "$out/pca_fit" > "$out/pca_fit.log" 2>&1
   PCA=$out/pca_fit/pca.pt
 fi
-run=(python -m research.run --policy "$THESIS_DATA_ROOT/models/smolvla-libero-local" --task-id "$TASK" "$@")
+run=(python -m research.run --policy "$RPS_DATA_ROOT/models/smolvla-libero-local" --task-id "$TASK" "$@")
 "${run[@]}" --w random --alpha "$ALPHA_RANDOM" --output-dir "$out/random" > "$out/random.log" 2>&1 &
 p1=$!
 "${run[@]}" --w "$PCA" --alpha "$ALPHA_PCA" --zero-reps 0 --output-dir "$out/pca" > "$out/pca.log" 2>&1 &

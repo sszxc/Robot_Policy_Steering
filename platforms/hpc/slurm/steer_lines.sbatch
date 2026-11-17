@@ -18,10 +18,10 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 libero_runtime
 export TMPDIR=$(mktemp -d /tmp/steer-XXXXXX)  # vector-env forkserver sockets fail on scratch
-export POLICY="$THESIS_DATA_ROOT/models/smolvla-libero-local"
+export POLICY="$RPS_DATA_ROOT/models/smolvla-libero-local"
 hostname
 python -m research.pretrained.prepare_policy
 FILE=$(realpath "${1//%a/${SLURM_ARRAY_TASK_ID:-}}") PAR=${2:-1}

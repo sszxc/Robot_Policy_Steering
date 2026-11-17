@@ -51,7 +51,7 @@ def test_aggregate_reads_old_format_without_overwriting_baseline(tmp_path):
     historical.mkdir()
     (historical / "summary.json").write_text("historical result\n")
     out = tmp_path / "migration-check"
-    env = dict(os.environ, THESIS_OUTPUT_ROOT=str(tmp_path))
+    env = dict(os.environ, RPS_OUTPUT_ROOT=str(tmp_path))
     subprocess.run([sys.executable, "-m", "research.evaluation.aggregate_eval", "123",
                     "--output-dir", str(out)], env=env, check=True, capture_output=True)
     summary = json.loads((out / "summary.json").read_text())

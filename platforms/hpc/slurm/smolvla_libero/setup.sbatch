@@ -15,12 +15,12 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 module purge
 module load mamba/latest
 
-ROOT="$THESIS_DATA_ROOT"
-ENV_PREFIX="$THESIS_PYTHON_ENV"
+ROOT="$RPS_DATA_ROOT"
+ENV_PREFIX="$RPS_PYTHON_ENV"
 export CONDA_PKGS_DIRS="$ROOT/cache/mamba"
 export PIP_CACHE_DIR="$ROOT/cache/pip"
 export HF_HOME="$ROOT/cache/huggingface"
@@ -68,7 +68,7 @@ for key in ('policy', 'backbone'):
     model = baseline[key]
     assert model['revision'], f'Missing revision: {key}'
     downloaded[key] = snapshot_download(repo_id=model['repo'], revision=model['revision'])
-(Path(os.environ['THESIS_DATA_ROOT']) / 'manifests/model-paths.json').write_text(
+(Path(os.environ['RPS_DATA_ROOT']) / 'manifests/model-paths.json').write_text(
     json.dumps(downloaded, indent=2) + '\n'
 )
 PY

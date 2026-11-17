@@ -19,14 +19,14 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 export EPISODES="${1:-10}" BATCH_SIZE="${2:-1}" SEED=1000
 [[ "$EPISODES" =~ ^[1-9][0-9]*$ && "$BATCH_SIZE" =~ ^[1-9][0-9]*$ ]] || exit 2
 (( BATCH_SIZE <= EPISODES && EPISODES % BATCH_SIZE == 0 )) || {
   echo 'BATCH_SIZE must divide EPISODES exactly.' >&2; exit 2;
 }
 libero_runtime
-RUN_DIR="$THESIS_OUTPUT_ROOT/smolvla/vanilla/liberoobj-parallel-${SLURM_JOB_ID:?Run using sbatch}"
+RUN_DIR="$RPS_OUTPUT_ROOT/smolvla/vanilla/liberoobj-parallel-${SLURM_JOB_ID:?Run using sbatch}"
 mkdir -p "$(dirname "$RUN_DIR")"
 mkdir "$RUN_DIR"
 mkdir "$RUN_DIR/logs" "$RUN_DIR/resources"
@@ -35,7 +35,7 @@ nvidia-smi > "$RUN_DIR/resources/gpu-start.txt"
 cat "$RUN_DIR/resources/gpu-start.txt"
 # Prepare shared inputs once, before any task process starts.
 python -m research.pretrained.prepare_policy
-export POLICY="$THESIS_DATA_ROOT/models/smolvla-libero-local"
+export POLICY="$RPS_DATA_ROOT/models/smolvla-libero-local"
 python platforms/hpc/checks/gpu_preflight.py
 [[ -f "$LIBERO_CONFIG_PATH/config.yaml" ]] || {
   echo "Missing LIBERO config: $LIBERO_CONFIG_PATH/config.yaml" >&2; exit 1;

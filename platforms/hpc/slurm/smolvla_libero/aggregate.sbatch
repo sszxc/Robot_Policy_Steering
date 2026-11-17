@@ -14,8 +14,8 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 module purge
 module load mamba/latest
-source activate "$THESIS_PYTHON_ENV"
+source activate "$RPS_PYTHON_ENV"
 python -m research.evaluation.aggregate_eval "$1"

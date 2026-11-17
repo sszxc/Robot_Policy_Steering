@@ -9,7 +9,7 @@ EPISODES="${EPISODES:-10}"
 BATCH_SIZE="${BATCH_SIZE:-1}"
 SEED="${SEED:-1000}"
 INIT_STATE_OFFSET="${INIT_STATE_OFFSET:-0}"
-cd "${THESIS_REPO_ROOT:?}"
+cd "${RPS_REPO_ROOT:?}"
 provenance_args=(
   --output-dir "$OUTPUT_DIR" --policy "$POLICY" --episodes "$EPISODES"
   --suite libero_object --batch-size "$BATCH_SIZE" --task-ids "[$TASK_INDEX]" --seed "$SEED"

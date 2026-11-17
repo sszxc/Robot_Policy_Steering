@@ -15,11 +15,11 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 module purge
 module load mamba/latest
-source activate "$THESIS_PYTHON_ENV"
-ROOT="$THESIS_DATA_ROOT"
+source activate "$RPS_PYTHON_ENV"
+ROOT="$RPS_DATA_ROOT"
 export HF_HOME="$ROOT/cache/huggingface"
 export LIBERO_CONFIG_PATH="$ROOT/config/libero"
 export PYTHONNOUSERSITE=1 PYTHONUNBUFFERED=1
@@ -36,7 +36,7 @@ assets = baseline['assets']
 path = snapshot_download(
     repo_id=assets['repo'], repo_type=assets['repo_type'],
     revision=assets['revision'],
-    local_dir=str(Path(os.environ['THESIS_DATA_ROOT']) / 'cache/libero/assets'),
+    local_dir=str(Path(os.environ['RPS_DATA_ROOT']) / 'cache/libero/assets'),
 )
 required = ('articulated_objects', 'stable_scanned_objects', 'turbosquid_objects',
             'stable_hope_objects', 'scenes')
@@ -60,6 +60,6 @@ from pathlib import Path
 import os
 import libero.libero
 from libero.libero import get_assets_path
-assert Path(get_assets_path()).resolve() == (Path(os.environ['THESIS_DATA_ROOT']) / 'cache/libero/assets')
+assert Path(get_assets_path()).resolve() == (Path(os.environ['RPS_DATA_ROOT']) / 'cache/libero/assets')
 print('LIBERO asset resolution OK')
 PY

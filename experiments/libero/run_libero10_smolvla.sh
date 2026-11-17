@@ -2,10 +2,10 @@
 # Smoke test: set TASK_IDS='[0]' and EPISODES=1.
 # Standard LIBERO-10 protocol: leave TASK_IDS unset and use EPISODES=10.
 set -euo pipefail
-THESIS_REPO_ROOT="${THESIS_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-export THESIS_REPO_ROOT
-export PYTHONPATH="$THESIS_REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
-cd "$THESIS_REPO_ROOT"
+RPS_REPO_ROOT="${RPS_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+export RPS_REPO_ROOT
+export PYTHONPATH="$RPS_REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+cd "$RPS_REPO_ROOT"
 
 export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl

@@ -17,11 +17,11 @@
 #SBATCH --error=/scratch/xzhan742/thesis/logs/%x-%j.err
 
 set -euo pipefail
-source "${THESIS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
+source "${RPS_REPO_ROOT:-$PWD}/platforms/hpc/runtime.sh"
 libero_runtime
 export TMPDIR=$(mktemp -d /tmp/steer-XXXXXX)  # vector-env forkserver sockets fail on scratch
 python -m research.pretrained.prepare_policy
-out="$THESIS_OUTPUT_ROOT/smolvla/steer2/bench-${SLURM_JOB_ID:?Run using sbatch}"
+out="$RPS_OUTPUT_ROOT/smolvla/steer2/bench-${SLURM_JOB_ID:?Run using sbatch}"
 mkdir -p "$out"
 nvidia-smi --query-gpu=timestamp,memory.used,utilization.gpu --format=csv,noheader -l 5 > "$out/gpu.csv" &
 smi=$!
@@ -32,7 +32,7 @@ for cfg in "$@"; do
   echo "$(date +%s) start $cfg" >> "$out/events.txt"
   pids=()
   for ((i = 0; i < P; i++)); do
-    python -m research.run --policy "$THESIS_DATA_ROOT/models/smolvla-libero-local" --task-id 0 \
+    python -m research.run --policy "$RPS_DATA_ROOT/models/smolvla-libero-local" --task-id 0 \
       --w random --alpha 0.3 --n-z 8 --scales 1 --zero-reps 0 --inits $((B / 2)) --init-start $((i * B / 2)) \
       --batch-size "$B" --episode-length 120 --videos 0 --output-dir "$out/$cfg-$i" 2>&1 \
       | while read -r l; do echo "$(date +%s) $l"; done > "$out/$cfg-$i.log" &
