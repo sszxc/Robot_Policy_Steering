@@ -8,6 +8,7 @@ z can be optimized by CEM, RL, VLM (ICL), human, etc.
 Current simulation will based on SmolVLA pretrained model and LIBERO benchmark.
 
 The final hardware experiment for this project will use a UR5 (not a UR5e) robotic arm and a HX5-D20-MRT-Right multi-fingered dexterous hand.
+Hardware runs go through `~/Documents/ros2_ur`; the UR5 + HX5 sim/RL/teleop stack is the separate repo `~/Documents/HX5-Lab`.
 
 
 # Computing Environment

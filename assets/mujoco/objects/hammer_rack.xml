@@ -1,9 +1,0 @@
-<mujoco model="hammer_rack">
-  <!-- Two supports holding the hammer handle horizontal at 0.085 m, head resting on the taller block. -->
-  <worldbody>
-    <body name="hammer_rack">
-      <geom name="rack_rear" type="box" pos="0 -0.09 0.0355" size="0.02 0.01 0.0355" rgba="0.3 0.3 0.35 1" />
-      <geom name="rack_head" type="box" pos="0 0.195 0.02" size="0.025 0.025 0.02" rgba="0.3 0.3 0.35 1" />
-    </body>
-  </worldbody>
-</mujoco>

@@ -1,8 +1,0 @@
-<mujoco model="grasp_ball">
-  <worldbody>
-    <body name="ball">
-      <freejoint name="ball" />
-      <geom name="ball" type="sphere" size="0.022" mass="0.05" condim="6" friction="1 0.01 0.001" rgba="0.95 0.8 0.2 1" />
-    </body>
-  </worldbody>
-</mujoco>

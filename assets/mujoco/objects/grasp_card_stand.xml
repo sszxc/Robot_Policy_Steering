@@ -1,9 +1,0 @@
-<!-- Static slot (8 mm card, 12 mm gap) that holds grasp_card.xml upright. -->
-<mujoco model="grasp_card_stand">
-  <worldbody>
-    <body name="card_stand">
-      <geom type="box" pos="0 0.016 0.015" size="0.04 0.01 0.015" rgba="0.4 0.4 0.45 1" />
-      <geom type="box" pos="0 -0.016 0.015" size="0.04 0.01 0.015" rgba="0.4 0.4 0.45 1" />
-    </body>
-  </worldbody>
-</mujoco>

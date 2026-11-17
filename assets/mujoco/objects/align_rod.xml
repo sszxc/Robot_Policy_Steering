@@ -1,9 +1,0 @@
-<mujoco model="align_rod">
-  <worldbody>
-    <body name="rod">
-      <freejoint name="rod" />
-      <geom name="rod" type="capsule" size="0.006 0.075" mass="0.03" condim="4" friction="1 0.005 0.0001" rgba="0.15 0.45 0.85 1" />
-      <geom name="rod_cap" type="cylinder" size="0.0065 0.012" pos="0 0 0.065" mass="0.002" contype="0" conaffinity="0" rgba="0.95 0.8 0.1 1" />
-    </body>
-  </worldbody>
-</mujoco>

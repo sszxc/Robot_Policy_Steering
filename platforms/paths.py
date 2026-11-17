@@ -12,17 +12,9 @@ def _env_path(env, default):
     return path.resolve() if path.is_absolute() else (repo_root() / path).resolve()
 
 
-def asset_path(*parts):
-    return repo_root().joinpath("assets", *parts)
-
-
 def data_root():
     return _env_path("THESIS_DATA_ROOT", "data")
 
 
 def output_path(*parts):
     return _env_path("THESIS_OUTPUT_ROOT", "out").joinpath(*parts)
-
-
-def ur5_ip():
-    return os.environ.get("THESIS_UR5_IP", "192.168.1.132")

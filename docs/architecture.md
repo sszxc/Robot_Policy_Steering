@@ -1,10 +1,11 @@
 # Project architecture
 
-Two domains in one repo: policy control-space research (SmolVLA/LIBERO) and the
-UR5 + HX5 robotics stack. Laptop and HPC share the Git checkout, not the Python env.
+Policy control-space research (SmolVLA / Pi0.5 on LIBERO). Laptop and HPC share the Git
+checkout, not the Python env. The UR5 + HX5 sim / RL / teleop stack lives in the separate
+repo `~/Documents/HX5-Lab`; real-robot runs go through `~/Documents/ros2_ur`.
 
 ```text
-thesis/
+Robot_Policy_Steering/
 ├── research/
 │   ├── pretrained/prepare_policy.py   link pinned HF snapshots into an offline policy dir
 │   ├── evaluation/                    provenance, verify_eval, aggregate_eval
@@ -17,37 +18,27 @@ thesis/
 │   ├── baselines/local-baseline.json  pinned Hub revisions (policy, backbone, assets)
 │   └── object_parallel/               self-contained: 10 Object tasks on one A100
 ├── platforms/
-│   ├── paths.py                       repo/asset/data/output paths (env-var overrides)
+│   ├── paths.py                       repo/data/output paths (env-var overrides)
 │   ├── hpc/                           runtime.sh, gpu_preflight.py, slurm/{steer,smolvla_libero/*}.sbatch
-│   └── environments/                  SmolVLA pip constraints, robotics versions
-├── robotics/
-│   ├── sim/                           MuJoCo scene composition, Sim runner, hand postures, viewer
-│   ├── policies/scripted/             one script per hand task
-│   ├── policies/rl/                   MJX envs, brax PPO train/eval
-│   ├── teleop/                        Leap -> hand retargeting, record/replay
-│   └── hardware/                      ur5/ ur_rtde examples; hx5/ real-hand UDP bridge (runs in the robotis_hand container) + sweep
-├── assets/mujoco/                     hand/arm/object MJCF (UR5e generic; lab/ = calibrated UR5 + mount + workcell from ros2_ur)
-├── assets/teleop/                     Leap range-of-motion recordings (float32 npz, see teleop/leap_source.py)
-├── ros2_ws/src/thesis_scene/          UR5 Gazebo + MoveIt (see ros2_ws/CHEATSHEET.md)
+│   └── environments/                  SmolVLA pip constraints
 ├── lerobot/                           frozen LeRobot subtree (source + packaging only)
 ├── tests/
-├── docs/                              usage, notes (hand task results), HPC, results
+├── docs/                              usage, HPC, results
 └── skills/ASU_Sol_HPC/                HPC skills, read on demand
 ```
 
-Ignored locally: `out/` (outputs), `data/`, `ros2_ws/{build,install,log}`, `.local-backups/`.
+Ignored locally: `out/` (outputs), `data/`, `.local-backups/`.
 
 ## Conventions
 
-- Keep LIBERO-specific config in `experiments/`; don't force LIBERO and UR5/HX5
-  into a shared env API until a concrete integration needs it.
+- Keep LIBERO-specific config in `experiments/`.
 - `lerobot/` is a squashed subtree of upstream `e0d50211`, frozen (no upstream
   pulls; non-source files removed). Edit it in place, in separate commits. Relevant:
   SmolVLA, possibly Pi0.5 / GR00T later, and the LIBERO env.
 - Install the root package with `pip install --no-build-isolation --no-deps -e .`
   into an existing env; LeRobot is installed separately in the SmolVLA env.
 - `platforms/paths.py` env vars: `THESIS_REPO_ROOT`, `THESIS_DATA_ROOT` (`data`),
-  `THESIS_OUTPUT_ROOT` (`out`), `THESIS_UR5_IP` (`192.168.1.132`). HPC jobs source
+  `THESIS_OUTPUT_ROOT` (`out`). HPC jobs source
   `platforms/hpc/runtime.sh`, which sets scratch values and `THESIS_PYTHON_ENV`;
   GPU LIBERO jobs then call its `libero_runtime` (env activation, offline caches, EGL).
 - Each LIBERO run gets a new output dir with `provenance.json` (commit, dirty,

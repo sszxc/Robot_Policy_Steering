@@ -1,8 +1,0 @@
-<mujoco model="grasp_card">
-  <worldbody>
-    <body name="card">
-      <freejoint name="card" />
-      <geom name="card" type="box" size="0.025 0.004 0.05" mass="0.02" condim="4" friction="1 0.01 0.001" rgba="0.3 0.5 0.9 1" />
-    </body>
-  </worldbody>
-</mujoco>
